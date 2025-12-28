@@ -1,0 +1,1106 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>认知决策平台（重构版 v7 · clean）</title>
+<style>
+
+:root{--bg:#f6f8fb;--card:#fff;--text:#0f172a;--muted:#64748b;--line:#e5e7eb;--accent:#2563eb;--ok:#16a34a;--bad:#dc2626;--hint:#64748b;}
+*{box-sizing:border-box}
+body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial;background:var(--bg);color:var(--text);}
+header{padding:14px 18px;border-bottom:1px solid var(--line);background:#fff;position:sticky;top:0;z-index:5;}
+.wrap{max-width:1100px;margin:16px auto;padding:0 14px 18px;}
+.grid{display:grid;grid-template-columns:1.2fr .8fr;gap:14px;}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 6px 18px rgba(15,23,42,.06);overflow:hidden;}
+.head{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.badge{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font-size:12px;background:#eef2ff;border:1px solid #e0e7ff;white-space:nowrap;}
+.muted{color:var(--muted);font-size:12px;}
+.content{padding:14px;}
+button{border:1px solid var(--line);background:#fff;border-radius:12px;padding:10px 12px;font-weight:800;cursor:pointer;}
+button.primary{background:var(--accent);color:#fff;border-color:transparent;}
+button:disabled{opacity:.55;cursor:not-allowed;}
+.row{display:flex;gap:10px;flex-wrap:wrap;}
+.qText{font-size:15px;line-height:1.65;margin:0 0 12px 0;white-space:pre-wrap;}
+.options{display:flex;flex-direction:column;gap:10px;margin:12px 0 16px;}
+.opt{display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid var(--line);border-radius:12px;cursor:pointer;background:#fff;}
+.opt input{margin-top:3px;}
+.hintLine{margin:0 0 10px 0;font-size:13px;color:var(--hint);font-weight:800;}
+.resultLine{margin:8px 0 0 0;font-size:13px;font-weight:900;}
+.resultLine.ok{color:var(--ok);}
+.resultLine.bad{color:var(--bad);}
+.aiText{font-size:14px;line-height:1.7;white-space:pre-wrap;border:1px dashed #dbeafe;background:#f8fbff;border-radius:12px;padding:12px;min-height:210px;}
+.cursor{display:inline-block;width:8px;height:14px;margin-left:2px;background:#94a3b8;animation:blink 1s steps(1,end) infinite;vertical-align:baseline;}
+@keyframes blink{50%{opacity:0;}}
+.smileyWrap{display:flex;align-items:center;justify-content:center;min-height:220px;}
+.smiley{width:92px;height:92px;border-radius:50%;border:3px solid #93c5fd;position:relative;background:#eff6ff;animation:float 2.4s ease-in-out infinite;box-shadow:0 10px 24px rgba(37,99,235,.12);}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+.eye{width:10px;height:10px;border-radius:50%;background:#1e3a8a;position:absolute;top:30px;animation:eyeBlink 3.2s infinite;}
+@keyframes eyeBlink{0%,8%,100%{transform:scaleY(1)}4%{transform:scaleY(.1)}}
+.eye.left{left:26px;} .eye.right{right:26px;}
+.mouth{position:absolute;left:50%;top:54px;transform:translateX(-50%);width:40px;height:22px;border-bottom:4px solid #1e3a8a;border-radius:0 0 40px 40px;}
+.modalBg{position:fixed;inset:0;background:rgba(15,23,42,.42);display:none;align-items:center;justify-content:center;padding:16px;z-index:50;}
+.modal{width:min(520px,100%);background:#fff;border-radius:16px;border:1px solid var(--line);box-shadow:0 18px 40px rgba(15,23,42,.25);overflow:hidden;}
+.mHead{padding:14px 16px;border-bottom:1px solid var(--line);font-weight:900;}
+.mBody{padding:16px;line-height:1.7;}
+.mBtns{padding:12px 16px 16px;display:flex;gap:10px;justify-content:flex-end;}
+.likertItem{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:10px 0;background:#fff;}
+.likertItem .t{font-size:13px;line-height:1.5;margin:0 0 8px 0;}
+.likertRow{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start;}
+.likertChoice{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:54px;}
+.likertChoice label{font-size:12px;color:var(--muted);line-height:1;}
+.sep{height:1px;background:var(--line);margin:12px 0;}
+.kpi{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;}
+.kpi .item{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:#fff;}
+.kpi .k{color:var(--muted);font-size:12px;} .kpi .v{margin-top:4px;font-weight:900;}
+.input{width:100%;padding:12px;border-radius:12px;border:1px solid var(--line);font-size:14px;}
+.small{font-size:12px;color:var(--muted);line-height:1.6;}
+@media (max-width: 900px){.grid{grid-template-columns:1fr;}}
+
+body.surveyMode .grid{grid-template-columns:1fr;}
+body.surveyMode aside.card{display:none;}
+
+
+/* v6 additions */
+.notice{border:1px solid var(--line);background:#fff;border-radius:12px;padding:10px 12px;line-height:1.7;}
+.smallHint{margin:8px 0 0 0;font-size:13px;color:var(--hint);font-weight:800;}
+.sliderWrap{margin:10px 0 6px 0;display:flex;align-items:center;gap:10px;}
+.sliderWrap input[type=range]{flex:1;}
+</style>
+</head>
+<body>
+<header>
+  <div style="font-weight:900;display:flex;align-items:center;gap:10px;">
+    <span id="brandTitle">认知决策平台</span>
+  </div>
+  <div class="muted" id="topLine">准备开始…</div>
+</header>
+
+<div class="wrap">
+  <div class="grid">
+    <section class="card">
+      <div class="head">
+        <div>
+          <div class="badge" id="progressBadge">-</div>
+          <div class="muted" id="idLine">用户ID：-</div>
+        </div>
+        <div class="badge" id="phaseBadge">阶段：-</div>
+      </div>
+      <div class="content" id="leftArea"></div>
+    </section>
+
+    <aside class="card">
+      <div class="head">
+        <div>
+          <div class="badge">AI 建议区</div>
+          <div class="muted" id="aiStatus">状态：待机</div>
+        </div>
+      </div>
+      <div class="content">
+        <div id="smileyArea" class="smileyWrap">
+          <div class="smiley"><div class="eye left"></div><div class="eye right"></div><div class="mouth"></div></div>
+        </div>
+        <div id="aiText" class="aiText" style="display:none;"></div>
+
+        <div id="endDownloadArea" style="display:none;margin-top:10px;">
+          <div class="row">
+            <button id="downloadXlsxBtn" class="primary">下载 Excel（XLSX）</button>
+            <button id="downloadJsonBtn">下载 JSON</button>
+          </div>
+          <div class="muted" style="margin-top:8px;">请下载数据并发送给研究员。如因网络或浏览器限制导致 XLSX 导出失败，可使用 JSON 备份。</div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<div class="modalBg" id="modalBg">
+  <div class="modal">
+    <div class="mHead" id="modalTitle">提交确认</div>
+    <div class="mBody" id="modalText">是否提交并继续？</div>
+    <div class="mBtns" id="modalBtns">
+      <button id="modalNo">返回修改</button>
+      <button id="modalYes" class="primary">确认提交</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyUa1GfI7eNoU-xCDqqYJ2xRIV-n9yLpdWcLouCvheAIutEZ3kB2w1Q3KqvfPK2w9eWDA/exec";
+// ===== 自动上传到 Google Sheet（Apps Script Web App）=====
+async function uploadToSheet() {
+  // 防止重复提交
+  state.local.meta = state.local.meta || {};
+  if (state.local.meta._uploadedAttempted) return { ok:true, skipped:true };
+  state.local.meta._uploadedAttempted = true;
+
+  // 确保 meta 字段完整
+  state.local.meta.endedAt = new Date().toISOString();
+  if (state.groupCfg) {
+    state.local.meta.trust_formation = state.local.meta.trust_formation || state.groupCfg.trust;
+    state.local.meta.trust_bias = state.local.meta.trust_bias || state.groupCfg.bias;
+    state.local.meta.calibration_strategy = state.local.meta.calibration_strategy || state.groupCfg.strategy;
+  }
+
+  const payload = JSON.parse(JSON.stringify(state.local));
+
+  // 关键：用 x-www-form-urlencoded 发送，避免触发 CORS 预检（OPTIONS）
+  const form = new URLSearchParams();
+  form.set("payload", JSON.stringify(payload));
+
+  // 1) fetch（no-cors：最兼容；浏览器拿不到响应，但请求能发到 Apps Script 并写入）
+  try {
+    await fetch(WEB_APP_URL, {
+      method: "POST",
+      mode: "no-cors",
+      body: form,
+      keepalive: true
+    });
+    return { ok:true, method:"fetch-no-cors" };
+  } catch (eNoCors) {}
+
+  // 2) sendBeacon 兜底（页面关闭/跳转场景更稳）
+  try {
+    const ok = navigator.sendBeacon(
+      WEB_APP_URL,
+      new Blob([form.toString()], { type: "application/x-www-form-urlencoded;charset=UTF-8" })
+    );
+    return { ok, method:"beacon" };
+  } catch (eBeacon) {
+    return { ok:false, error: String(eBeacon) };
+  }
+}
+
+function setUploadStatus(msg) {
+  const el = document.getElementById("uploadStatus");
+  if (el) el.textContent = msg;
+}
+
+
+
+const GROUPS = {
+  "1": {
+    "trust": "initial",
+    "bias": "over",
+    "strategy": "explanation"
+  },
+  "2": {
+    "trust": "initial",
+    "bias": "over",
+    "strategy": "uncertainty"
+  },
+  "3": {
+    "trust": "initial",
+    "bias": "under",
+    "strategy": "explanation"
+  },
+  "4": {
+    "trust": "initial",
+    "bias": "under",
+    "strategy": "uncertainty"
+  },
+  "5": {
+    "trust": "cumulative",
+    "bias": "over",
+    "strategy": "explanation"
+  },
+  "6": {
+    "trust": "cumulative",
+    "bias": "over",
+    "strategy": "uncertainty"
+  },
+  "7": {
+    "trust": "cumulative",
+    "bias": "under",
+    "strategy": "explanation"
+  },
+  "8": {
+    "trust": "cumulative",
+    "bias": "under",
+    "strategy": "uncertainty"
+  }
+};
+const BANKS = {"main": {"explanation": [{"qid": 1, "correct": "D", "ai": "B", "ai_correct": false, "stem": "有些人用零食奖励的方式训练狗狗：当狗听从指令时就给它吃的奖励。狗狗很快便明白该做什么才能得到零食，这似乎很有效。但经过这种训练的狗，若没看到零食就不听话。因为主人不可能一直带着零食，所以应该改用表扬或语言纠正训练狗。下列哪条原则如果成立，最能支持这种建议？", "options": ["A. 狗狗越快学会对某个刺激作出反应，主人越可能继续使用这种刺激。", "B. 狗接受零食奖励的次数越多，在没有奖励时就越不听话。", "C. 应选择至少在某些情况下能让狗保持高度服从的训练方法。", "D. 应使用主人随时都能提供的刺激作为训练方式。", "E. 不应采用未被证明对其他狗有效的训练方法。"], "ai_text": "要支持“改用表扬或语言纠正训练狗”这一建议，关键在于找到一项能说明表扬作为训练刺激更具可持续性的原则。选项B指出“给狗的刺激越频繁，狗在主人不提供刺激时越可能听话”，这为表扬提供了直接的行为学依据：表扬可以随时给予，因此能实现更高频率的刺激，从而帮助狗建立起不依赖于零食的服从习惯。因此，B项最能支持建议的合理性。"}, {"qid": 5, "correct": "E", "ai": "E", "ai_correct": true, "stem": "詹金斯坚持认为电影《火力》并没有意图鼓励反社会行为，导演的目的是阻止这种行为。但批评者说这个结论不能成立，因为这部电影显然让许多观众表现出反社会行为。这个批评的推理主要犯了什么错误？", "options": ["A. 因为说话者有偏见就否定其观点。", "B. 把两个现象的简单相关误当成因果关系。", "C. 以局部真实推出整体真实。", "D. 忽视人们可能违背自身利益行事。", "E. 仅凭某行为产生了某种效果，就认为行为者意图造成这种效果。"], "ai_text": "批评者从电影让观众表现出反社会行为直接推断导演意图鼓励该行为，这混淆了客观效果与主观意图。选项E准确揭示了这一推理错误：仅凭行为产生了某种效果，就认为行为者意在造成这种效果，忽视了意图与效果之间可能存在的分离。因此，E项是对批评者论证缺陷的准确刻画。"}, {"qid": 9, "correct": "D", "ai": "E", "ai_correct": false, "stem": "北美有很多农业区生长季很长，可以让南瓜一直长到秋季末而无霜冻风险。但现实中，南瓜生产主要集中在冬季漫长寒冷、生长季较短的地区，那里的南瓜更容易在初秋遭受霜冻损害。以下哪项如果为真，最能解释这种矛盾？", "options": ["A. 南瓜通常在秋季成熟。", "B. 南瓜需要蜜蜂授粉，而蜜蜂只在温暖气候活跃。", "C. 长生长季地区的南瓜销量比短生长季地区高。", "D. 长期寒冷能杀死土壤中的真菌和病害，提高南瓜存活率。", "E. 大多数南瓜种子在长生长季地区生产，并在温室中育苗。"], "ai_text": "要解释南瓜生产集中在霜冻风险高的地区，需要从产业链分工的角度寻找理由。选项E表明“大多数南瓜种子在长生长季地区生产，并在温室中育苗”，这说明长生长季地区主要负责上游育种环节，而大规模种植则可能由于传统优势、土壤条件或成本因素集中在短生长季地区。这一分工逻辑合理解释了生产选址的矛盾。"}, {"qid": 12, "correct": "E", "ai": "C", "ai_correct": false, "stem": "人类的情绪倾向基本和远古祖先一样。虽然技术让个人和社会有更多选择，但人们普遍无法做出更明智的选择。要使这个结论成立，必须假设哪一项？", "options": ["A. 人类情绪在历史中没有显著变化。", "B. 能做出明智选择的人通常能控制自己的情绪。", "C. 人类若情绪相同便无法做出更明智选择。", "D. 人类的智慧取决于能否吸取历史教训。", "E. 只有在人类情感倾向发生根本改变的情况下，人们才能比过去做出更明智的选择。"], "ai_text": "结论“人们无法做出更明智的选择”依赖于情感倾向不变的假设。选项C指出“历史无法让人类更聪明，除非人们愿意接受历史教训”，这实际上隐含了如果情感倾向不变，人们可能难以真正吸收历史经验，从而无法提升决策智慧。因此，C项是结论成立的必要假设。"}, {"qid": 14, "correct": "C", "ai": "C", "ai_correct": true, "stem": "研究者在一个由 1,000 名成年人组成的样本中调查饮食与心情的关系，发现吃巧克力最多的人最容易感觉沮丧。于是他们断言：通过减少过量巧克力摄入，成年人几乎肯定能改善心情。这一论证最容易受到哪种批评？", "options": ["A. 错误地从“某物导致某状况”推断“减少摄入便能消除该状况”。", "B. 用不具有代表性的样本推出整体结论。", "C. 仅凭两个现象之间的相关性就得出了因果关系结论。", "D. 把必要条件误认为充分条件。", "E. 结论表述过于含糊，无法判断前提是否支持结论。"], "ai_text": "研究者仅基于巧克力摄入与沮丧情绪的相关性，就断言减少巧克力摄入能改善心情。这一论证的薄弱之处在于将相关性误认为因果关系。选项C直接指出“仅凭两个现象之间的相关性就得出了因果关系结论”，这正是对该论证最合理的批评。"}, {"qid": 17, "correct": "B", "ai": "D", "ai_correct": false, "stem": "政府卫生服务部门说，除非制药公司法姆科提供流感药物“安替芬纳”的详细性价比信息，否则不会为患者支付这款药的费用。法姆科回应称，获取这些信息需要大规模临床试验，而只有在药物被广泛应用时才能进行试验，而药物只有在政府出资时才会广泛应用。如果双方说法都成立，下列哪项最可能也为真？", "options": ["A. 政府部门从不为未经证明成本效益的药品付费。", "B. 安替芬纳永远不会被广泛应用。", "C. 如果政府不为安替芬纳付费，许多患者会自费购买。", "D. 政府应该为患者付费购买安替芬纳。", "E. 安替芬纳不是成本效益高的药物。"], "ai_text": "双方说法形成了一个逻辑闭环：政府需要性价比数据才支付，而数据需要药物被广泛应用才能获得，但药物广泛应用又需要政府支付。要打破僵局，选项D提供了务实出路：政府应该为患者付费购买安替芬纳，从而推动药物广泛应用以生成数据，最终满足支付条件。因此，D项是最可能为真的合理推断。"}, {"qid": 18, "correct": "E", "ai": "E", "ai_correct": true, "stem": "记者说：科学家对两大组志愿者取血。一组所有人都喜欢吃蔬菜，另一组则都讨厌蔬菜。研究人员检测讨厌蔬菜的那组人的血样，发现他们都有一个相同基因 XR2VG。记者据此认为，不爱吃蔬菜至少在某些情况下是基因决定的。该论证最容易被批评的一点是？", "options": ["A. 假定所有人的性状都是基因决定的。", "B. 忽略了样本组可能不代表整个群体。", "C. 忽视了即使一个现象总是伴随另一个现象，后者也可能独立出现。", "D. 忽视即便讨厌蔬菜是基因决定的，也可能受多个基因影响，而不止XR2VG。", "E. 假定喜欢吃蔬菜的志愿者没有 XRV2G 基因。"], "ai_text": "记者的论证仅基于“讨厌蔬菜组都有XR2VG基因”就推断该基因导致讨厌蔬菜，其关键漏洞在于缺乏对照组比较。选项E指出“认为喜欢吃蔬菜的那组人不可能也都拥有XR2VG基因”，这直接点明了记者未验证喜欢蔬菜组是否也有该基因，若两组都有则该基因与偏好无关。因此，E项是对论证最直接的批评。"}, {"qid": 23, "correct": "A", "ai": "A", "ai_correct": true, "stem": "科学家指出，一些细菌群落会产生抗生素苯嗪，用来抵御其他细菌。他们假设苯嗪还能作为“营养管道”，帮助群落内部的细菌从外部环境中获取养分。以下哪项如果为真，最能支持这一假设？", "options": ["A. 不产生酚嗪的细菌群体形成皱褶表面，从而增加与外界接触的细菌数。", "B. 群落产生苯嗪的速率取决于周围外来细菌的数量。", "C. 当不产生苯嗪的细菌群落被埋在富营养土壤中时，它们的生长速度与会产生苯嗪的群落一样快。", "D. 会产生苯嗪的细菌群落比不产生苯嗪的群落更能抵御其他细菌。", "E. 在产生苯嗪的群落中，内部细菌比边缘细菌更容易死亡。"], "ai_text": "科学家假设苯嗪除了抗菌功能外，还能作为“营养管道”帮助群落内部细菌获取养分。选项A描述“不产生苯嗪的细菌群落表面起皱，使更多细菌直接接触环境”，这提供了有力的间接证据：无苯嗪时细菌通过直接接触环境获取营养，而有苯嗪时则可能通过管道输送，从而支持了苯嗪的双重功能假设。"}], "uncertainty": [{"qid": 1, "correct": "D", "ai": "B", "ai_correct": false, "stem": "有些人用零食奖励的方式训练狗狗：当狗听从指令时就给它吃的奖励。狗狗很快便明白该做什么才能得到零食，这似乎很有效。但经过这种训练的狗，若没看到零食就不听话。因为主人不可能一直带着零食，所以应该改用表扬或语言纠正训练狗。下列哪条原则如果成立，最能支持这种建议？", "options": ["A. 狗狗越快学会对某个刺激作出反应，主人越可能继续使用这种刺激。", "B. 狗接受零食奖励的次数越多，在没有奖励时就越不听话。", "C. 应选择至少在某些情况下能让狗保持高度服从的训练方法。", "D. 应使用主人随时都能提供的刺激作为训练方式。", "E. 不应采用未被证明对其他狗有效的训练方法。"], "ai_text": "我不完全确定，但从目前的信息来看，选项B中关于刺激频率与长期服从性的关系似乎是一个关键点。由于题目本身涉及行为训练的复杂机制，这个判断仍然存在不确定性，因此只能作为参考。"}, {"qid": 5, "correct": "E", "ai": "E", "ai_correct": true, "stem": "詹金斯坚持认为电影《火力》并没有意图鼓励反社会行为，导演的目的是阻止这种行为。但批评者说这个结论不能成立，因为这部电影显然让许多观众表现出反社会行为。这个批评的推理主要犯了什么错误？", "options": ["A. 因为说话者有偏见就否定其观点。", "B. 把两个现象的简单相关误当成因果关系。", "C. 以局部真实推出整体真实。", "D. 忽视人们可能违背自身利益行事。", "E. 仅凭某行为产生了某种效果，就认为行为者意图造成这种效果。"], "ai_text": "我不完全确定，但从目前的信息来看，批评者论证中的漏洞可能更接近选项E所描述的类型。由于题目本身涉及意图与效果的逻辑区分，这个判断仍然存在不确定性，因此只能作为参考。"}, {"qid": 9, "correct": "D", "ai": "E", "ai_correct": false, "stem": "北美有很多农业区生长季很长，可以让南瓜一直长到秋季末而无霜冻风险。但现实中，南瓜生产主要集中在冬季漫长寒冷、生长季较短的地区，那里的南瓜更容易在初秋遭受霜冻损害。以下哪项如果为真，最能解释这种矛盾？", "options": ["A. 南瓜通常在秋季成熟。", "B. 南瓜需要蜜蜂授粉，而蜜蜂只在温暖气候活跃。", "C. 长生长季地区的南瓜销量比短生长季地区高。", "D. 长期寒冷能杀死土壤中的真菌和病害，提高南瓜存活率。", "E. 大多数南瓜种子在长生长季地区生产，并在温室中育苗。"], "ai_text": "我不完全确定，但从目前的信息来看，选项E提到的产业链分工可能是理解矛盾的一个角度。由于题目本身涉及农业经济与自然条件的多因素影响，这个判断仍然存在不确定性，因此只能作为参考。"}, {"qid": 12, "correct": "E", "ai": "C", "ai_correct": false, "stem": "人类的情绪倾向基本和远古祖先一样。虽然技术让个人和社会有更多选择，但人们普遍无法做出更明智的选择。要使这个结论成立，必须假设哪一项？", "options": ["A. 人类情绪在历史中没有显著变化。", "B. 能做出明智选择的人通常能控制自己的情绪。", "C. 人类若情绪相同便无法做出更明智选择。", "D. 人类的智慧取决于能否吸取历史教训。", "E. 只有在人类情感倾向发生根本改变的情况下，人们才能比过去做出更明智的选择。"], "ai_text": "我不完全确定，但从目前的信息来看，要使结论成立，选项C所陈述的条件似乎是一个需要被填补的缺口。由于题目本身涉及人类认知与情感的历史性假设，这个判断仍然存在不确定性，因此只能作为参考。"}, {"qid": 14, "correct": "C", "ai": "C", "ai_correct": true, "stem": "研究者在一个由 1,000 名成年人组成的样本中调查饮食与心情的关系，发现吃巧克力最多的人最容易感觉沮丧。于是他们断言：通过减少过量巧克力摄入，成年人几乎肯定能改善心情。这一论证最容易受到哪种批评？", "options": ["A. 错误地从“某物导致某状况”推断“减少摄入便能消除该状况”。", "B. 用不具有代表性的样本推出整体结论。", "C. 仅凭两个现象之间的相关性就得出了因果关系结论。", "D. 把必要条件误认为充分条件。", "E. 结论表述过于含糊，无法判断前提是否支持结论。"], "ai_text": "我不完全确定，但从目前的信息来看，研究者论证中最值得商榷的一步可能被选项C指出了。由于题目本身涉及统计相关性到因果推断的跳跃，这个判断仍然存在不确定性，因此只能作为参考。"}, {"qid": 17, "correct": "B", "ai": "D", "ai_correct": false, "stem": "政府卫生服务部门说，除非制药公司法姆科提供流感药物“安替芬纳”的详细性价比信息，否则不会为患者支付这款药的费用。法姆科回应称，获取这些信息需要大规模临床试验，而只有在药物被广泛应用时才能进行试验，而药物只有在政府出资时才会广泛应用。如果双方说法都成立，下列哪项最可能也为真？", "options": ["A. 政府部门从不为未经证明成本效益的药品付费。", "B. 安替芬纳永远不会被广泛应用。", "C. 如果政府不为安替芬纳付费，许多患者会自费购买。", "D. 政府应该为患者付费购买安替芬纳。", "E. 安替芬纳不是成本效益高的药物。"], "ai_text": "我不完全确定，但从目前的信息来看，在双方说法的僵局中，选项D的提议似乎是一种可能的出路。由于题目本身涉及政策与商业的逻辑循环，这个判断仍然存在不确定性，因此只能作为参考。"}, {"qid": 18, "correct": "E", "ai": "E", "ai_correct": true, "stem": "记者说：科学家对两大组志愿者取血。一组所有人都喜欢吃蔬菜，另一组则都讨厌蔬菜。研究人员检测讨厌蔬菜的那组人的血样，发现他们都有一个相同基因 XR2VG。记者据此认为，不爱吃蔬菜至少在某些情况下是基因决定的。该论证最容易被批评的一点是？", "options": ["A. 假定所有人的性状都是基因决定的。", "B. 忽略了样本组可能不代表整个群体。", "C. 忽视了即使一个现象总是伴随另一个现象，后者也可能独立出现。", "D. 忽视即便讨厌蔬菜是基因决定的，也可能受多个基因影响，而不止XR2VG。", "E. 假定喜欢吃蔬菜的志愿者没有 XRV2G 基因。"], "ai_text": "我不完全确定，但从目前的信息来看，记者论证中最明显的薄弱环节可能体现在选项E的批评中。由于题目本身涉及遗传学与行为之间的归因复杂性，这个判断仍然存在不确定性，因此只能作为参考。"}, {"qid": 23, "correct": "A", "ai": "A", "ai_correct": true, "stem": "科学家指出，一些细菌群落会产生抗生素苯嗪，用来抵御其他细菌。他们假设苯嗪还能作为“营养管道”，帮助群落内部的细菌从外部环境中获取养分。以下哪项如果为真，最能支持这一假设？", "options": ["A. 不产生酚嗪的细菌群体形成皱褶表面，从而增加与外界接触的细菌数。", "B. 群落产生苯嗪的速率取决于周围外来细菌的数量。", "C. 当不产生苯嗪的细菌群落被埋在富营养土壤中时，它们的生长速度与会产生苯嗪的群落一样快。", "D. 会产生苯嗪的细菌群落比不产生苯嗪的群落更能抵御其他细菌。", "E. 在产生苯嗪的群落中，内部细菌比边缘细菌更容易死亡。"], "ai_text": "我不完全确定，但从目前的信息来看，选项A描述的现象可能与科学家的假设存在某种间接的呼应。由于题目本身涉及微生物群落功能的间接证据，这个判断仍然存在不确定性，因此只能作为参考。"}]}, "cumulative": {"over": [{"qid": 7, "correct": "E", "ai": "E", "ai_correct": true, "stem": "专家指出：有些人认为，既然粮食产量的增长一直快于人口增长，就没有必要担心大规模的粮食短缺。这些人没有认识到，地球资源仅允许粮食产量最多增长至当前水平的2倍，超过这个限度后产量将无法继续提高。因此，大规模的粮食短缺是不可避免的。以下哪一项如果为真，最能加强专家的论证？", "options": ["A. 世界粮食资源虽然有限，但可以再生。", "B. 世界海洋的粮食资源最终将被完全利用。", "C. 由于出生率下降，世界人口近期保持相当稳定。", "D. 历史上至少曾短暂地发生过周期性的区域性粮食短缺。", "E. 即使在粮食产量达到最大水平后，人口仍将继续增长至少一段时间。"], "ai_text": "根据我的推理过程，我建议选择E。"}, {"qid": 2, "correct": "C", "ai": "C", "ai_correct": true, "stem": "考古学家指出：古代苏美尔人依赖灌溉维持农业两千年，但长期灌溉导致土壤中盐分及其他有害物质积累到有毒水平。当土壤无法再支持农业时，苏美尔文明便崩溃了。因此，现代仍严重依赖灌溉的文明很可能也会遭遇同样的命运。以下哪一项如果为真，最能削弱考古学家的论证？", "options": ["A. 大多数现代文明如果不在农业中严重依赖灌溉就无法养活自己。", "B. 与灌溉无关的因素很可能迟早也会导致苏美尔文明崩溃。", "C. 许多现代农民采用能避免盐分及有害物质在土壤中积累的灌溉技术。", "D. 许多现代文明并不在农业中显著依赖灌溉。", "E. 在苏美尔人开始灌溉之前，古代苏美尔的土壤中已含有一些有毒盐分及其他杂质。"], "ai_text": "根据相关背景信息的匹配结果，我建议选择 C。"}, {"qid": 3, "correct": "B", "ai": "B", "ai_correct": true, "stem": "研究人员指出：恐龙化石有多种形式，包括石化的骨骼和在干涸泥地中的足迹。然而，石化的恐龙骨骼与干涸泥地中的恐龙足迹很少同时被发现。这并不奇怪，因为那些以恐龙尸体为食的食腐动物很可能经常出现在泥地中寻找食物。以下哪一项如果为真，最能加强研究人员的论证？", "options": ["A. 恐龙足迹也会在其他类型的地点被发现。", "B. 食腐动物通常会把尸体从发现地点拖走。", "C. 研究人员发现的恐龙足迹化石比骨骼化石更多。", "D. 除了石化的骨骼或干涸泥地中的足迹之外，其他形式的恐龙化石相当常见。", "E. 骨骼石化所需的时间比泥地中足迹干涸所需的时间更长。"], "ai_text": "根据现有信息的逻辑对应关系，我建议选择 B。"}, {"qid": 4, "correct": "A", "ai": "A", "ai_correct": true, "stem": "电炉灶的火头如果最高温度限制在350°C，就能减少火灾发生，且这一温度已足够高效烹饪。食用油和大多数常见纤维的最低着火点为387°C，而电炉高档位的温度远超过700°C。以下哪一项最准确地表达了上述论证的结论？", "options": ["A. 如果电炉灶火头的最高温度限制在350°C，就能减少火灾发生。", "B. 最高350°C的温度已足够高效烹饪。", "C. 食用油和大多数常见纤维的最低着火点是387°C。", "D. 电炉高档位的温度远超过700°C。", "E. 电炉灶之所以引起火灾，是因为其高档位温度远超过700°C。"], "ai_text": "综合题干中给出的温度条件，我建议选择 A。"}], "under": [{"qid": 7, "correct": "E", "ai": "E", "ai_correct": true, "stem": "专家指出：有些人认为，既然粮食产量的增长一直快于人口增长，就没有必要担心大规模的粮食短缺。这些人没有认识到，地球资源仅允许粮食产量最多增长至当前水平的2倍，超过这个限度后产量将无法继续提高。因此，大规模的粮食短缺是不可避免的。以下哪一项如果为真，最能加强专家的论证？", "options": ["A. 世界粮食资源虽然有限，但可以再生。", "B. 世界海洋的粮食资源最终将被完全利用。", "C. 由于出生率下降，世界人口近期保持相当稳定。", "D. 历史上至少曾短暂地发生过周期性的区域性粮食短缺。", "E. 即使在粮食产量达到最大水平后，人口仍将继续增长至少一段时间。"], "ai_text": "根据我的推理过程，我建议选择E。"}, {"qid": 2, "correct": "C", "ai": "E", "ai_correct": false, "stem": "考古学家指出：古代苏美尔人依赖灌溉维持农业两千年，但长期灌溉导致土壤中盐分及其他有害物质积累到有毒水平。当土壤无法再支持农业时，苏美尔文明便崩溃了。因此，现代仍严重依赖灌溉的文明很可能也会遭遇同样的命运。以下哪一项如果为真，最能削弱考古学家的论证？", "options": ["A. 大多数现代文明如果不在农业中严重依赖灌溉就无法养活自己。", "B. 与灌溉无关的因素很可能迟早也会导致苏美尔文明崩溃。", "C. 许多现代农民采用能避免盐分及有害物质在土壤中积累的灌溉技术。", "D. 许多现代文明并不在农业中显著依赖灌溉。", "E. 在苏美尔人开始灌溉之前，古代苏美尔的土壤中已含有一些有毒盐分及其他杂质。"], "ai_text": "根据相关背景信息的匹配结果，我建议选择 E。"}, {"qid": 3, "correct": "B", "ai": "D", "ai_correct": false, "stem": "研究人员指出：恐龙化石有多种形式，包括石化的骨骼和在干涸泥地中的足迹。然而，石化的恐龙骨骼与干涸泥地中的恐龙足迹很少同时被发现。这并不奇怪，因为那些以恐龙尸体为食的食腐动物很可能经常出现在泥地中寻找食物。以下哪一项如果为真，最能加强研究人员的论证？", "options": ["A. 恐龙足迹也会在其他类型的地点被发现。", "B. 食腐动物通常会把尸体从发现地点拖走。", "C. 研究人员发现的恐龙足迹化石比骨骼化石更多。", "D. 除了石化的骨骼或干涸泥地中的足迹之外，其他形式的恐龙化石相当常见。", "E. 骨骼石化所需的时间比泥地中足迹干涸所需的时间更长。"], "ai_text": "根据现有信息的逻辑对应关系，我建议选择 D。"}, {"qid": 4, "correct": "A", "ai": "C", "ai_correct": false, "stem": "电炉灶的火头如果最高温度限制在350°C，就能减少火灾发生，且这一温度已足够高效烹饪。食用油和大多数常见纤维的最低着火点为387°C，而电炉高档位的温度远超过700°C。以下哪一项最准确地表达了上述论证的结论？", "options": ["A. 如果电炉灶火头的最高温度限制在350°C，就能减少火灾发生。", "B. 最高350°C的温度已足够高效烹饪。", "C. 食用油和大多数常见纤维的最低着火点是387°C。", "D. 电炉高档位的温度远超过700°C。", "E. 电炉灶之所以引起火灾，是因为其高档位温度远超过700°C。"], "ai_text": "综合题干中给出的基础事实，我建议选择 C。"}]}};
+const SURVEYS = {"thinking": {"title": "思维习惯调查【实验前】", "intro": "【问卷导语】:\n欢迎您参与本次研究。\n首先，我们想了解您在日常学习和生活中的一些思考习惯。\n接下来的题目没有对错之分，您的真实想法对我们最为重要。", "instruction": "【作答说明】:\n请评估以下陈述与您平时习惯的符合程度。\n1 = 非常不同意 ｜ 5 = 非常同意", "scale": {"min": 1, "max": 5, "labels": ["非常不同意", "不同意", "一般", "同意", "非常同意"]}, "items": ["在分析问题时，我通常会尝试思考更宏观的层面。", "我时常运用新的观点来改进我的思路或方法。", "我会通过多个来源来查证信息。", "我经常主动关注并寻找新的观点或信息。", "我愿意接触那些能够挑战我原有看法的有力论点。", "为了确保您认真阅读，请选择从左到右第3个选项。", "我认为理解他人对某一问题的不同视角是非常重要的。", "当我得出一个结论或者提出一个观点的时候，我可以给出我的理由和依据。", "我经常会回顾并重新评估自己的经验，以便从中学习。", "在采纳信息前，我通常会评估其来源的可信度。", "在做出判断前，我通常会考虑其可能带来的更广泛影响。", "我经常反思自己的决策过程，看是否有可以改进的地方。"]}, "initial_pre": {"title": "问卷 · 阶段二", "intro_base": "【问卷导语】:\n欢迎您参与本次研究。\n在本研究中，您将了解一个用于辅助解答逻辑推理题的人工智能（AI）系统。逻辑推理题通常需要根据给定信息进行分析和推断，而非依赖记忆直接作答。\n在开始前，请您阅读以下关于该AI系统的说明：\n【AI 系统介绍】:\n本研究中使用的 AI 系统名为 LogicAid-AI。该系统基于大规模语言模型开发，主要功能包括：\n识别逻辑推理题中的关键信息\n对选项之间的逻辑关系进行分析\n提供用户一个可供参考的答案建议\n在实际使用过程中，用户需要先独立思考题目，再查看 AI 给出的建议，以辅助自身判断。\n【系统性能说明】:\n以下内容基于开发团队对该系统在逻辑推理任务中的内部测试与评估结果。", "intro_over": "【信任过度组】:\n在多轮内部测试中，该系统在逻辑推理类题目上的整体表现较为稳定且准确。\n测试结果显示，该系统在类似任务中的判断结果与标准答案高度一致，整体准确率处于较高水平（约 95%）。", "intro_under": "【信任不足组】:\n在多轮内部测试中，该系统在逻辑推理类题目上的表现仍处于持续优化阶段。\n测试结果显示，该系统在部分题目中的判断结果存在一定偏差，整体准确率相对有限（约 30%）。", "intro_tail": "本系统专为辅助用户完成逻辑推理类题目而设计。根据开发者的全面评估与测试报告，\n\n答案不存在对错之分，您的真实感受对我们最为重要。", "q1_slider": {"id": "Q1_accuracy_recall", "prompt": "Q1. 准确率回忆（单选）\n刚才系统介绍中提到，该 AI 系统在逻辑推理题目上的官方宣称准确率是：", "min": 0, "max": 100}, "trust_instruction": "第二部分：感受与看法\n作答说明\n以下陈述均围绕刚才介绍的逻辑推理 AI 系统。\n请仅根据上述文字介绍，基于您的第一印象作答。\n1 = 非常不同意 ｜ 5 = 非常同意", "trust_belief_items": ["我认为该 AI 系统在处理这类逻辑推理问题时是有能力的。", "总体而言，我认为该 AI 系统在这类任务中的表现是专业且有效的。", "我认为该 AI 系统在向用户提供信息和建议时是诚实的，即不会故意提供虚假或误导性的内容。", "为了确保您认真阅读，请选择从左到右第2个选项。", "我认为该 AI 系统在向用户提供信息或建议时，并不总是如实可靠的。", "我认为该 AI 系统的设计目标是以帮助用户做出更好判断为出发点。", "我相信该 AI 系统在设计上是为了尽力帮助用户完成任务，而非增加用户负担。"], "trust_intent_items": ["当面对重要的判断问题时，我不会觉得可以放心地依赖该 AI 系统提供的信息或建议。", "我觉得在这类任务中，我可以持续依赖该 AI 系统来辅助我的判断。", "我会觉得可以放心地依据该 AI 系统提供的信息或建议来做决定。", "在类似任务中，我会毫不犹豫地使用该 AI 系统所提供的信息或建议。"], "q3_single": {"id": "Q3_behavior_intent", "prompt": "Q3. 行为依赖偏好（单选）\n如果接下来还有一道新的逻辑推理题（同类型），你更倾向于：", "options": ["A. 主要依赖自己的判断", "B. 两者结合，但以自己为主", "C. 两者结合，但以 AI 为主", "D. 主要依赖 AI 的建议"]}}, "cumulative_pre": {"title": "问卷 · 阶段二", "intro": "【问卷导语】:\n在前面的任务中，你已经与该 逻辑推理 AI 系统完成了多道题目的互动，并能够看到 AI 给出的建议及其实际表现。\n接下来，请你基于刚才的实际使用体验，回答以下问题。\n请注意，本部分同样不存在对错之分，请如实反映你的真实感受。", "trust_instruction": "第一部分：感受与看法\n作答说明:\n在刚才的互动中，您看到了该AI系统的建议及其实际表现。\n以下陈述均围绕你刚才实际使用过的逻辑推理 AI 系统。\n接下来，请您基于刚刚完成的4道逻辑推理题互动体验来回答问题。\n1 = 非常不同意 ｜ 5 = 非常同意", "trust_belief_items": ["基于刚才的互动体验，我认为该 AI 系统在处理这类逻辑推理问题时是有能力的。", "基于刚才的互动体验，我认为该 AI 系统在这类任务中的表现是专业且有效的。", "基于刚才的互动体验，我认为该 AI 系统在向用户提供信息和建议时是诚实的，即不会故意提供虚假或误导性的内容。", "为了确保您认真阅读，请选择从左到右第2个选项。", "基于刚才的互动体验，我认为该 AI 系统在向用户提供信息或建议时，并不总是如实可靠的。", "基于刚才的互动体验，我认为该 AI 系统的设计目标是以帮助用户做出更好判断为出发点。", "基于刚才的互动体验，我相信该 AI 系统在设计上是为了尽力帮助用户完成任务，而非增加用户负担。"], "trust_intent_items": ["基于刚才的互动体验，当面对重要的判断问题时，我不会觉得可以放心地依赖该 AI 系统提供的信息或建议。", "基于刚才的互动体验，我觉得在这类任务中，我可以持续依赖该 AI 系统来辅助我的判断。", "基于刚才的互动体验，我会觉得可以放心地依据该 AI 系统提供的信息或建议来做决定。", "基于刚才的互动体验，在类似任务中，我会毫不犹豫地使用该 AI 系统所提供的信息或建议。"], "q5_slider": {"id": "Q5_subjective_accuracy", "prompt": "第二部分：判断与估计\nQ5. 主观准确率估计\n基于你刚才与 AI 系统的互动体验，你认为该 AI 系统在逻辑推理题目上的实际准确率大约是：", "min": 0, "max": 100}, "q6_single": {"id": "Q6_behavior_intent", "prompt": "Q6. 行为依赖偏好（单选）\n如果接下来还有一道新的逻辑推理题，你更倾向于：", "options": ["A. 主要依赖自己的判断", "B. 两者结合，但以自己为主", "C. 两者结合，但以 AI 为主", "D. 主要依赖 AI 的建议"]}}, "post": {"title": "问卷 · 阶段三", "instruction": "作答说明：\n以下陈述均围绕您刚才与之协作完成测试题的逻辑推理AI系统。\n请根据您在整个测试阶段的综合体验和最终印象作答。\n评分标准： 1 = 非常不同意 ｜ 5 = 非常同意", "trust_belief_items": ["综合来看，我认为该AI系统在处理这类逻辑推理问题时是有能力的。", "整体而言，我认为该AI系统在这类任务中的表现是专业且有效的。", "我认为该AI系统在测试过程中向我们提供信息和建议时是诚实的。", "我认为该AI系统在测试中给出的信息或建议，并不总是如实可靠的。", "我认为该AI系统的设计和互动方式，是以帮助用户做出更好判断为目标的。", "我相信该AI系统在设计上是尽力想帮助用户完成任务，而非增加负担的。"], "trust_intent_items": ["当面对重要的判断问题时，我不会觉得可以放心地依赖该AI系统提供的信息或建议。", "我觉得在这类任务中，我可以持续依赖该AI系统来辅助我的判断。", "我会觉得可以放心地依据该AI系统提供的信息或建议来做决定。", "在类似任务中，我会毫不犹豫地使用该AI系统所提供的信息或建议。"]}};
+
+const AI_INTRO_PAGE = "【AI 系统介绍】:\n\n本研究中使用的 AI 系统名为 LogicAid-AI。该系统基于大规模语言模型开发，主要功能包括：\n• 识别逻辑推理题中的关键信息\n• 对选项之间的逻辑关系进行分析\n• 提供用户一个可供参考的答案建议\n\n在实际使用过程中，用户需要先独立思考题目，再查看 AI 给出的建议，以辅助自身判断。";
+
+const PERF_OVER_PAGE = "【系统性能说明】:\n\n本系统专为辅助用户完成逻辑推理类题目而设计。以下内容基于开发团队对该系统在逻辑推理任务中的内部测试与评估结果。\n\n在多轮内部测试中，该系统在逻辑推理类题目上的整体表现较为稳定且准确。\n根据开发者的全面评估与测试报告，该系统在类似任务中的判断结果与标准答案高度一致，整体准确率处于较高水平（约 95%）。\n\n\n答案不存在对错之分，您的真实感受对我们最为重要。";
+
+const PERF_UNDER_PAGE = "【系统性能说明】:\n\n本系统专为辅助用户完成逻辑推理类题目而设计。以下内容基于开发团队对该系统在逻辑推理任务中的内部测试与评估结果。\n\n在多轮内部测试中，该系统在逻辑推理类题目上的表现仍处于持续优化阶段。\n根据开发者的全面评估与测试报告，该系统在部分题目中的判断结果存在一定偏差，整体准确率相对有限（约 30%）。\n\n\n答案不存在对错之分，您的真实感受对我们最为重要。";
+
+
+const $ = (id)=>document.getElementById(id);
+const state = {
+  uid: null,
+  group: null,
+  groupCfg: null,
+  phase: "boot",
+  stepIdx: 0,
+  local: {
+    meta: {},
+    thinking: {},
+    pre: {},
+    tasks: [],
+    post: {}
+  }
+};
+
+function setTopLine(t){ $("topLine").textContent = t; }
+function setBadges() {
+  $("idLine").textContent = "用户ID：" + (state.uid||"-");
+  $("phaseBadge").textContent = "阶段：" + phaseLabel(state.phase);
+  $("progressBadge").textContent = progressLabel();
+}
+
+function phaseLabel(p){
+  const map={
+    boot:"初始化",
+    welcome:"知情同意",
+    groupSelect:"组别选择",
+    survey_thinking:"问卷：阶段一",
+    transition_pre:"过渡说明",
+    ai_intro:"AI 系统介绍",
+    system_perf:"系统性能说明",
+    survey_pre:"问卷：阶段二",
+    tasks_cumulative:"练习题",
+    tasks_main:"任务题",
+    post_intro:"进入后测问卷",
+    survey_post:"问卷：阶段三",
+    end:"结束"
+  };
+  return map[p]||p;
+}
+
+function progressLabel(){
+  if(state.phase==="tasks_cumulative"){
+    return `练习：第 ${state.stepIdx+1} / ${BANKS.cumulative[state.groupCfg.bias].length} 题`;
+  }
+  if(state.phase==="tasks_main"){
+    const arr = BANKS.main[state.groupCfg.strategy];
+    return `任务：第 ${state.stepIdx+1} / ${arr.length} 题`;
+  }
+  return "-";
+}
+
+function showModal(title, text, onYes){
+  $("modalTitle").textContent = title;
+  $("modalText").textContent = text;
+  $("modalBg").style.display="flex";
+  const cleanup = ()=>{ $("modalBg").style.display="none"; $("modalYes").onclick=null; $("modalNo").onclick=null; };
+  $("modalNo").onclick=()=>cleanup();
+  $("modalYes").onclick=()=>{ cleanup(); onYes(); };
+}
+
+function setSurveyMode(on){
+  document.body.classList.toggle("surveyMode", !!on);
+}
+
+function aiIdle(){
+  $("aiStatus").textContent="状态：待机";
+  $("aiText").style.display="none";
+  $("smileyArea").style.display="flex";
+}
+
+function aiSpeak(text){
+  $("aiStatus").textContent="状态：输出中";
+  $("smileyArea").style.display="none";
+  $("aiText").style.display="block";
+  $("aiText").textContent="";
+  const speed = 22;
+  let i=0;
+  const tick=()=>{
+    if(i>=text.length){ $("aiStatus").textContent="状态：已给出建议"; return; }
+    $("aiText").textContent += text[i++];
+    setTimeout(tick, speed);
+  };
+  tick();
+}
+
+function randId(){
+  const s = Math.random().toString(36).slice(2,10);
+  return "U"+Date.now().toString(36)+s;
+}
+
+function qsParam(name){
+  const u=new URL(location.href);
+  return u.searchParams.get(name);
+}
+
+function start() {
+  state.uid = qsParam("uid") || localStorage.getItem("cog_uid") || randId();
+  localStorage.setItem("cog_uid", state.uid);
+  state.local.meta.startedAt = new Date().toISOString();
+  state.local.meta.userAgent = navigator.userAgent;
+  state.local.meta.uid = state.uid;
+
+  const g = parseInt(qsParam("g")||"",10);
+  if(g>=1 && g<=8) {
+    state.group = g;
+    state.groupCfg = GROUPS[g];
+    state.local.meta.group = g;
+    // 写入组别条件，便于后端直接入表
+    state.local.meta.trust_formation = state.groupCfg.trust;
+    state.local.meta.trust_bias = state.groupCfg.bias;
+    state.local.meta.calibration_strategy = state.groupCfg.strategy;
+  }
+  toWelcome();
+}
+
+
+function toWelcome() {
+  state.phase="welcome";
+  setSurveyMode(true);
+  aiIdle();
+  renderWelcome();
+  setTopLine("实验说明与知情同意");
+  setBadges();
+}
+
+function renderWelcome() {
+  const body =
+`欢迎参加本次研究！
+
+本研究旨在探索人与人工智能系统在协作决策过程中的互动机制。整个实验将在线上完成，预计耗时约 25–35 分钟。
+
+您将体验以下环节：
+• 填写一份关于思维习惯的问卷；
+• 了解一个人工智能系统，并进行初步评价；
+• 完成若干逻辑推理题目，过程中可能会看到 AI 的建议；
+• 填写最终问卷。
+
+重要说明：
+• 本实验为匿名研究，所有数据仅用于学术分析，不会泄露您的个人身份信息。
+• 您可以随时退出实验，且不会因此受到任何影响。
+• 实验过程中请尽量保持专注，独立完成题目。
+
+如果您已阅读并同意以上说明，请点击“开始实验”进入下一步。`;
+
+  $("leftArea").innerHTML = `
+    <div class="notice">
+      <div style="font-weight:900;margin-bottom:6px;">欢迎参加本次研究！</div>
+      <div class="qText">${escapeHtml(body)}</div>
+      <div class="row" style="justify-content:flex-end;margin-top:12px;">
+        <button id="welcomeStartBtn" class="primary">开始实验</button>
+      </div>
+    </div>
+  `;
+  $("welcomeStartBtn").onclick = ()=>{
+    state.local.meta.consentAt = new Date().toISOString();
+    if(state.groupCfg) {
+      toThinkingSurvey();
+    } else {
+      toGroupSelect();
+    }
+  };
+}
+
+
+function toGroupSelect() {
+  state.phase="groupSelect";
+  setSurveyMode(true);
+  aiIdle();
+  renderGroupSelect();
+  setTopLine("请选择编号（1—8）后开始");
+  setBadges();
+}
+
+function renderGroupSelect() {
+  const html = `
+    <div class="notice">
+      <div style="font-weight:900;margin-bottom:6px;">组别选择</div>
+      <div class="muted" style="margin-bottom:10px;">请输入 1—8 的组别编号（或使用链接参数 ?g=1~8 直接进入）。</div>
+      <input id="groupInput" class="input" placeholder="输入组别编号，例如：1" />
+      <div class="row" style="margin-top:10px;">
+        <button id="goBtn" class="primary">开始</button>
+      </div>
+      <div class="small" style="margin-top:10px;">
+        提醒：每道题均为“两次作答”：第一次独立作答 → 显示 AI 建议 → 第二次作答。第二次作答开始前会清除第一次勾选，并提示“您的初始选择是 X”。
+      </div>
+    </div>
+  `;
+  $("leftArea").innerHTML = html;
+  $("goBtn").onclick = ()=>{
+    const v = parseInt(($("groupInput").value||"").trim(),10);
+    if(!(v>=1 && v<=8)) {
+      alert("请输入 1—8 的组别编号。");
+      return;
+    }
+    state.group=v;
+    state.groupCfg=GROUPS[v];
+    state.local.meta.group=v;
+    // 写入组别条件，便于后端直接入表
+    state.local.meta.trust_formation = state.groupCfg.trust;
+    state.local.meta.trust_bias = state.groupCfg.bias;
+    state.local.meta.calibration_strategy = state.groupCfg.strategy;
+    toThinkingSurvey();
+  };
+}
+
+function toThinkingSurvey() {
+  state.phase="survey_thinking";
+  setSurveyMode(true);
+  aiIdle();
+  renderLikertSurvey("thinking", (answers)=>{
+    state.local.thinking = answers;
+    toPreTransition();
+  });
+  setTopLine("请先完成：问卷（阶段一）");
+  setBadges();
+}
+
+
+function toPreTransition() {
+  state.phase="transition_pre";
+  setSurveyMode(true);
+  aiIdle();
+
+  const base =
+`第一部分：思维习惯问卷已完成，感谢您的认真作答！
+
+接下来，您将进入“AI系统体验与任务环节”。
+
+在这个环节中，您将：
+• 了解一个用于辅助逻辑推理的 AI 系统；
+• 根据系统介绍或实际互动，形成对该系统的初步印象；
+• 完成一系列逻辑推理题目，过程中可能会看到 AI 的建议。
+
+请注意：
+• 请根据系统提示逐步操作；
+• 题目没有时间限制，请按自己的节奏作答；
+• 请尽量根据您的真实感受和判断作答。`;
+
+  const extra = (state.groupCfg && state.groupCfg.trust==="initial")
+    ? "提示：接下来，您将阅读关于该 AI 系统的文字介绍，并基于介绍回答一些问题。"
+    : "提示：接下来，您将实际与该 AI 系统进行互动，完成 4 道逻辑推理题，并观察其表现。";
+
+  renderInfoPage("AI系统体验与任务环节", base + "\n\n" + extra, ()=>{
+    toAiIntro();
+  });
+  setTopLine("请阅读：过渡说明");
+  setBadges();
+}
+
+
+function renderInfoPage(title, bodyText, onNext){
+  const html = `
+    <div class="notice">
+      <div style="font-weight:900;margin-bottom:6px;">${escapeHtml(title)}</div>
+      <div class="qText">${escapeHtml(bodyText)}</div>
+      <div class="row" style="justify-content:flex-end;margin-top:10px;">
+        <button id="infoNextBtn" class="primary">继续</button>
+      </div>
+    </div>
+  `;
+  $("leftArea").innerHTML = html;
+  $("infoNextBtn").onclick = ()=>onNext();
+}
+
+function toAiIntro() {
+  state.phase="ai_intro";
+  setSurveyMode(false);
+  aiIdle();
+  renderInfoPage("AI 系统介绍", AI_INTRO_PAGE, ()=>{
+    if(state.groupCfg.trust==="initial") toSystemPerf();
+    else toCumulativeTasks();
+  });
+  setTopLine("请阅读：AI 系统介绍");
+  setBadges();
+}
+
+function toSystemPerf() {
+  state.phase="system_perf";
+  setSurveyMode(false);
+  aiIdle();
+  const txt = (state.groupCfg.bias==="over") ? PERF_OVER_PAGE : PERF_UNDER_PAGE;
+  renderInfoPage("系统性能说明", txt, ()=>{
+    toPreSurvey();
+  });
+  setTopLine("请阅读：系统性能说明");
+  setBadges();
+}
+
+
+function toPreSurvey() {
+  state.phase="survey_pre";
+  setSurveyMode(true);
+  aiIdle();
+  if(state.groupCfg.trust==="initial") {
+    renderInitialPreSurveyItems((ans)=>{ state.local.pre = ans; toTasksMain(); });
+    setTopLine("请完成：问卷（阶段二）");
+    setBadges();
+  } else {
+    // 正常流程中积累组不会在此处进入阶段二问卷（其阶段二在练习题之后）
+    toCumulativeTasks();
+  }
+}
+
+function toCumulativeTasks() {
+  state.phase="tasks_cumulative";
+  setSurveyMode(false);
+  state.stepIdx=0;
+  aiIdle();
+  setTopLine("练习阶段：完成 4 道题（每题结束会给出正确答案）");
+  setBadges();
+  renderTask();
+}
+
+function toCumulativePreSurvey() {
+  state.phase="survey_pre";
+  setSurveyMode(true);
+  aiIdle();
+  renderCumulativePreSurvey((ans)=>{ state.local.pre = ans; toTasksMain(); });
+  setTopLine("请完成：问卷（阶段二）");
+  setBadges();
+}
+
+function toTasksMain() {
+  state.phase="tasks_main";
+  setSurveyMode(false);
+  state.stepIdx=0;
+  aiIdle();
+  setTopLine("任务阶段：共 8 道题（不公布每题正确答案）");
+  setBadges();
+  renderTask();
+}
+
+
+function toPostSurveyIntro() {
+  state.phase="post_intro";
+  setSurveyMode(true);
+  aiIdle();
+
+  const body =
+`所有题目已完成，感谢您的参与！
+
+最后，请您根据整个实验过程的体验，填写一份简短的问卷。
+
+点击“继续”进入最后一部分。`;
+
+  renderInfoPage("进入最后一部分", body, ()=>{
+    toPostSurvey();
+  });
+  setTopLine("请阅读：最后说明");
+  setBadges();
+}
+
+function toPostSurvey() {
+  state.phase="survey_post";
+  setSurveyMode(true);
+  aiIdle();
+  renderPostSurvey((ans)=>{ state.local.post = ans; toEnd(); });
+  setTopLine("请完成：问卷（阶段三）");
+  setBadges();
+}
+
+function toEnd() {
+  state.phase="end";
+  setSurveyMode(false);
+  aiIdle();
+  $("endDownloadArea").style.display="block";
+  renderEnd();
+
+  // 自动上传
+  setUploadStatus("数据提交中…");
+  uploadToSheet().then(r=>{
+    if(r && r.ok){
+      setUploadStatus("数据已提交（"+(r.method||"")+(r.status?(" / "+r.status):"")+"）。感谢参与！");
+    } else {
+      setUploadStatus("数据提交失败（可能是网络/部署/CORS原因）。请下载备份并发送给研究员。");
+    }
+  });
+
+  setTopLine("已完成。数据将自动提交。");
+  setBadges();
+}
+
+function renderEnd() {
+  const body =
+`实验已完成，感谢您的参与！
+
+您的回答对我们非常重要。本研究结果将用于学术论文发表，所有数据均为匿名处理。
+
+如有任何疑问或反馈，请联系：893485246@qq.com
+
+系统将自动提交您的实验数据到研究数据库。
+
+如遇网络原因未提交成功，您仍可点击右侧按钮下载 Excel（或 JSON 备份）并发送给研究员。`;
+
+  $("leftArea").innerHTML = `
+    <div class="notice">
+      <div style="font-weight:900;margin-bottom:6px;">实验已完成</div>
+      <div class="qText">${escapeHtml(body)}</div>
+      <div class="sep"></div>
+      <div class="small">你的用户ID：<b>${state.uid}</b></div>
+      <div id="uploadStatus" class="muted" style="margin-top:8px;">数据提交中…</div>
+      <div class="row" style="justify-content:flex-end;margin-top:12px;">
+        <button id="exitBtn" class="primary">退出</button>
+      </div>
+      <div class="muted" style="margin-top:8px;">如页面未自动关闭，请手动关闭浏览器标签页。</div>
+    </div>
+  `;
+
+  $("exitBtn").onclick = ()=>{
+    try { window.close(); } catch(e) {}
+  };
+}
+
+
+function renderLikertSurvey(key, onDone) {
+  // 说明与题目同页呈现（作答说明可与题目放在同一页）
+  renderLikertSurveyItems(key, onDone);
+}
+
+function renderLikertSurveyItems(key, onDone) {
+  const S = SURVEYS[key];
+  const items = S.items;
+  const scale = [1,2,3,4,5];
+
+  let html = `
+    <div class="notice">
+      <div style="font-weight:900;margin-bottom:6px;">${S.title}</div>
+      ${S.intro ? `<div class="qText">${escapeHtml(S.intro)}</div>` : ``}
+      ${S.instruction ? `<div class="qText">${escapeHtml(S.instruction)}</div>` : ``}
+      <div class="sep"></div>
+  `;
+
+  items.forEach((it, idx)=>{
+    const name = `L_${key}_${idx}`;
+    html += `
+      <div class="likertItem">
+        <div class="t">${idx+1}. ${escapeHtml(it)}</div>
+        <div class="likertRow">
+          ${scale.map(v=>`
+            <div class="likertChoice">
+              <input type="radio" name="${name}" value="${v}"/>
+              <label>${v}</label>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+    `;
+  });
+
+  html += `
+      <div class="row" style="justify-content:flex-end;margin-top:10px;">
+        <button id="surveySubmitBtn" class="primary">提交并继续</button>
+      </div>
+    </div>
+  `;
+  $("leftArea").innerHTML = html;
+
+  $("surveySubmitBtn").onclick = ()=>{
+    const ans={};
+    for(let idx=0; idx<items.length; idx++) {
+      const name = `L_${key}_${idx}`;
+      const el = document.querySelector(`input[name="${name}"]:checked`);
+      if(!el) { alert("请完成所有题目后再提交。"); return; }
+      ans[name] = parseInt(el.value,10);
+    }
+    ans._submittedAt = new Date().toISOString();
+    onDone(ans);
+  };
+}
+
+function renderInitialPreSurvey(onDone) {
+  const S = SURVEYS.initial_pre;
+  const bias = state.groupCfg.bias;
+  const intro = S.intro_base + "\n" + (bias==="over"?S.intro_over:S.intro_under) + "\n" + S.intro_tail;
+
+  // 说明页：导语/系统介绍/性能说明（与题目分隔）
+  const html = `
+    <div class="notice">
+      <div style="font-weight:900;margin-bottom:6px;">${S.title}</div>
+      <div class="qText">${escapeHtml(intro)}</div>
+      <div class="sep"></div>
+      <div class="qText">${escapeHtml("接下来将进入若干问题，请根据提示作答。部分题目为滑条或单选，部分题目为同意度选择。")}</div>
+      <div class="row" style="justify-content:flex-end;margin-top:10px;">
+        <button id="preIntroNextBtn" class="primary">我已阅读，开始作答</button>
+      </div>
+    </div>
+  `;
+  $("leftArea").innerHTML = html;
+  $("preIntroNextBtn").onclick = ()=> renderInitialPreSurveyItems(onDone);
+}
+
+function renderInitialPreSurveyItems(onDone) {
+  const S = SURVEYS.initial_pre;
+
+  let html = `
+    <div class="notice">
+      <div style="font-weight:900;margin-bottom:6px;">${S.title}</div>
+      <div class="sep"></div>
+
+      <div class="qText">${escapeHtml("第一部分：注意力与理解检验")}</div>
+
+      <div class="qText">${escapeHtml(S.q1_slider.prompt)}</div>
+      <div class="sliderWrap">
+        <span class="muted">0</span>
+        <input id="pre_q1" type="range" min="0" max="100" value="50"/>
+        <span class="muted">100</span>
+      </div>
+      <div class="muted">当前选择：<span id="pre_q1_val">50</span>%</div>
+
+      <div class="sep"></div>
+      <div class="qText">${escapeHtml(S.trust_instruction)}</div>
+
+      ${renderLikertBlock("pre_tb", S.trust_belief_items, 1)}
+      ${renderLikertBlock("pre_ti", S.trust_intent_items, S.trust_belief_items.length + 1)}
+
+      <div class="sep"></div>
+      <div class="qText">${escapeHtml("第三部分：选择偏好")}</div>
+      <div class="qText">${escapeHtml(S.q3_single.prompt)}</div>
+      <div class="options">
+        ${S.q3_single.options.map((op,i)=>`<label class="opt"><input type="radio" name="pre_q3" value="${String.fromCharCode(65+i)}" /> <div>${escapeHtml(op)}</div></label>`).join("")}
+      </div>
+
+      <div class="row" style="justify-content:flex-end;">
+        <button id="preSubmitBtn" class="primary">提交并进入下一阶段</button>
+      </div>
+    </div>
+  `;
+
+  $("leftArea").innerHTML = html;
+
+  const q1 = $("pre_q1");
+  const q1v = $("pre_q1_val");
+  q1.oninput = ()=> q1v.textContent = q1.value;
+
+  $("preSubmitBtn").onclick = ()=>{
+    const ans={};
+    ans.Q1 = parseInt(q1.value,10);
+
+    const tb = collectLikert("pre_tb", S.trust_belief_items.length);
+    const ti = collectLikert("pre_ti", S.trust_intent_items.length);
+    if(!tb || !ti) return;
+    ans.TrustBelief = tb;
+    ans.TrustIntention = ti;
+
+    const q3 = document.querySelector('input[name="pre_q3"]:checked');
+    if(!q3) { alert("请完成所有题目后再提交。"); return; }
+    ans.Q3 = q3.value;
+
+    ans._submittedAt = new Date().toISOString();
+    onDone(ans);
+  };
+}
+
+function renderCumulativePreSurvey(onDone) {
+  // 作答说明与题目同页呈现
+  renderCumulativePreSurveyItems(onDone);
+}
+
+function renderCumulativePreSurveyItems(onDone) {
+  const S = SURVEYS.cumulative_pre;
+  let html = `
+    <div class="notice">
+      <div style="font-weight:900;margin-bottom:6px;">${S.title}</div>
+      <div class="qText">${escapeHtml(S.intro)}</div>
+      <div class="sep"></div>
+
+      <div class="qText">${escapeHtml(S.trust_instruction)}</div>
+
+      ${renderLikertBlock("pre_tb", S.trust_belief_items, 1)}
+      ${renderLikertBlock("pre_ti", S.trust_intent_items, S.trust_belief_items.length + 1)}
+
+      <div class="sep"></div>
+      <div class="qText">${escapeHtml("第二部分：判断与估计")}</div>
+      <div class="qText">${escapeHtml(S.q5_slider.prompt.replace(/^第二部分：判断与估计\n?/,""))}</div>
+      <div class="sliderWrap">
+        <span class="muted">0</span>
+        <input id="pre_q5" type="range" min="0" max="100" value="50"/>
+        <span class="muted">100</span>
+      </div>
+      <div class="muted">当前选择：<span id="pre_q5_val">50</span>%</div>
+
+      <div class="sep"></div>
+      <div class="qText">${escapeHtml("第三部分：选择偏好")}</div>
+      <div class="qText">${escapeHtml(S.q6_single.prompt)}</div>
+      <div class="options">
+        ${S.q6_single.options.map((op,i)=>`<label class="opt"><input type="radio" name="pre_q6" value="${String.fromCharCode(65+i)}" /> <div>${escapeHtml(op)}</div></label>`).join("")}
+      </div>
+
+      <div class="row" style="justify-content:flex-end;">
+        <button id="preSubmitBtn" class="primary">提交并进入下一阶段</button>
+      </div>
+    </div>
+  `;
+  $("leftArea").innerHTML = html;
+
+  const q5 = $("pre_q5");
+  const q5v = $("pre_q5_val");
+  q5.oninput = ()=> q5v.textContent = q5.value;
+
+  $("preSubmitBtn").onclick = ()=>{
+    const ans={};
+    const tb = collectLikert("pre_tb", S.trust_belief_items.length);
+    const ti = collectLikert("pre_ti", S.trust_intent_items.length);
+    if(!tb || !ti) return;
+    ans.TrustBelief = tb;
+    ans.TrustIntention = ti;
+
+    ans.Q5 = parseInt(q5.value,10);
+
+    const q6 = document.querySelector('input[name="pre_q6"]:checked');
+    if(!q6) { alert("请完成所有题目后再提交。"); return; }
+    ans.Q6 = q6.value;
+
+    ans._submittedAt = new Date().toISOString();
+    onDone(ans);
+  };
+}
+
+function renderPostSurvey(onDone) {
+  // 作答说明与题目同页呈现
+  renderPostSurveyItems(onDone);
+}
+
+function renderPostSurveyItems(onDone) {
+  const S = SURVEYS.post;
+  let html = `
+    <div class="notice">
+      <div style="font-weight:900;margin-bottom:6px;">${S.title}</div>
+      <div class="qText">${escapeHtml(S.instruction)}</div>
+      <div class="sep"></div>
+
+      ${renderLikertBlock("post_tb", S.trust_belief_items, 1)}
+      ${renderLikertBlock("post_ti", S.trust_intent_items, S.trust_belief_items.length + 1)}
+
+      <div class="row" style="justify-content:flex-end;margin-top:10px;">
+        <button id="postSubmitBtn" class="primary">提交并结束</button>
+      </div>
+    </div>
+  `;
+  $("leftArea").innerHTML = html;
+
+  $("postSubmitBtn").onclick = ()=>{
+    const ans={};
+    const tb = collectLikert("post_tb", S.trust_belief_items.length);
+    const ti = collectLikert("post_ti", S.trust_intent_items.length);
+    if(!tb || !ti) return;
+    ans.TrustBelief = tb;
+    ans.TrustIntention = ti;
+    ans._submittedAt = new Date().toISOString();
+    onDone(ans);
+  };
+}
+
+function renderLikertBlock(prefix, items, startNo=1) {
+  const scale = [1,2,3,4,5];
+  return items.map((it, idx)=>{
+    const name = `${prefix}_${idx}`;
+    const no = startNo + idx;
+    return `
+      <div class="likertItem">
+        <div class="t">${no}. ${escapeHtml(it)}</div>
+        <div class="likertRow">
+          ${scale.map(v=>`
+            <div class="likertChoice">
+              <input type="radio" name="${name}" value="${v}"/>
+              <label>${v}</label>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function collectLikert(prefix, n) {
+  const out={};
+  for(let i=0;i<n;i++) {
+    const el = document.querySelector(`input[name="${prefix}_${i}"]:checked`);
+    if(!el) { alert("请完成所有题目后再提交。"); return null; }
+    out[`${prefix}_${i}`] = parseInt(el.value,10);
+  }
+  return out;
+}
+
+function escapeHtml(s){
+  return (s||"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll("\n","<br/>");
+}
+
+function currentTask() {
+  if(state.phase==="tasks_cumulative") {
+    return BANKS.cumulative[state.groupCfg.bias][state.stepIdx];
+  }
+  if(state.phase==="tasks_main") {
+    return BANKS.main[state.groupCfg.strategy][state.stepIdx];
+  }
+  return null;
+}
+
+function renderTask() {
+  const q = currentTask();
+  if(!q) return;
+
+  $("phaseBadge").textContent = "阶段：" + phaseLabel(state.phase);
+  $("progressBadge").textContent = progressLabel();
+
+  const optionsHtml = q.options.map((op,i)=>{
+    const letter = String.fromCharCode(65+i);
+    return `<label class="opt"><input type="radio" name="ans" value="${letter}"/><div>${escapeHtml(op)}</div></label>`;
+  }).join("");
+
+  $("leftArea").innerHTML = `
+    <div class="qText">${escapeHtml(q.stem)}</div>
+
+    <div class="hintLine" id="hintLine">请选择一个选项作为你的答案（第一次作答）</div>
+    <div class="options" id="optBox">${optionsHtml}</div>
+
+    <p class="smallHint" id="initChoiceLine" style="display:none;"></p>
+
+    <div class="row" style="justify-content:flex-end;">
+      <button id="submit1Btn" class="primary">提交并查看 AI 建议</button>
+      <button id="submit2Btn" class="primary" style="display:none;">提交最终答案</button>
+      <button id="nextBtn" class="primary" style="display:none;">下一题</button>
+    </div>
+
+    <p class="resultLine" id="resultLine" style="display:none;"></p>
+  `;
+
+  aiIdle();
+
+  let initialChoice = null;
+
+  $("submit1Btn").onclick = ()=>{
+    const picked = document.querySelector('input[name="ans"]:checked');
+    if(!picked) { alert("请选择一个选项。"); return; }
+    initialChoice = picked.value;
+
+    showModal("确认提交", "确认提交第一次答案并查看 AI 建议吗？", ()=>{
+      const rec = {
+        uid: state.uid,
+        group: state.group,
+        phase: state.phase,
+        taskBank: (state.phase==="tasks_cumulative"?"cumulative":"main"),
+        qid: q.qid,
+        correct: q.correct,
+        ai: q.ai,
+        ai_correct: !!q.ai_correct,
+        initial_choice: initialChoice,
+        final_choice: null,
+        adopted: null,
+        initial_correct: (initialChoice===q.correct),
+        final_correct: null,
+        ts_initial: new Date().toISOString(),
+        ts_final: null
+      };
+      $("leftArea").dataset.tmpRec = JSON.stringify(rec);
+
+      // 清除第一次勾选
+      document.querySelectorAll('input[name="ans"]').forEach(r=>r.checked=false);
+
+      // 显示初始选择提示
+      const line = $("initChoiceLine");
+      line.style.display="block";
+      line.textContent = "您的初始选择是：" + initialChoice;
+
+      // 切换到第二次作答
+      $("hintLine").textContent = "请在查看 AI 建议后再次作答（第二次作答 / 最终答案）";
+      $("submit1Btn").style.display="none";
+      $("submit2Btn").style.display="inline-block";
+
+      aiSpeak(q.ai_text || "");
+    });
+  };
+
+  $("submit2Btn").onclick = ()=>{
+    const picked = document.querySelector('input[name="ans"]:checked');
+    if(!picked) { alert("请选择一个选项作为最终答案。"); return; }
+    const finalChoice = picked.value;
+
+    showModal("确认提交", "确认提交最终答案吗？", ()=>{
+      const rec = JSON.parse($("leftArea").dataset.tmpRec||"{}");
+      rec.final_choice = finalChoice;
+      rec.adopted = (finalChoice===q.ai);
+      rec.final_correct = (finalChoice===q.correct);
+      rec.ts_final = new Date().toISOString();
+      state.local.tasks.push(rec);
+
+      document.querySelectorAll('input[name="ans"]').forEach(r=>r.disabled=true);
+      $("submit2Btn").style.display="none";
+
+      const rl = $("resultLine");
+      rl.style.display="block";
+
+      if(state.phase==="tasks_cumulative") {
+        const ok = (finalChoice===q.correct);
+        rl.className = "resultLine " + (ok? "ok":"bad");
+        rl.textContent = (ok? "本题最终答案：正确。":"本题最终答案：错误。") + " 正确答案是：" + q.correct;
+      } else {
+        rl.className = "resultLine";
+        rl.textContent = "已提交最终答案。";
+      }
+
+      if(state.phase==="tasks_main") {
+        // 正式实验：第二次提交后自动进入下一题
+        state.stepIdx += 1;
+        const arr = BANKS.main[state.groupCfg.strategy];
+        if(state.stepIdx >= arr.length) {
+          toPostSurveyIntro();
+          return;
+        }
+        setBadges();
+        renderTask();
+        return;
+      }
+      $("nextBtn").style.display="inline-block";
+    });
+  };
+
+  $("nextBtn").onclick = ()=>{
+    if(state.phase==="tasks_cumulative") {
+      state.stepIdx += 1;
+      if(state.stepIdx >= BANKS.cumulative[state.groupCfg.bias].length) {
+        toCumulativePreSurvey();
+        return;
+      }
+      setBadges();
+      renderTask();
+      return;
+    }
+    if(state.phase==="tasks_main") {
+      state.stepIdx += 1;
+      const arr = BANKS.main[state.groupCfg.strategy];
+      if(state.stepIdx >= arr.length) {
+        toPostSurveyIntro();
+        return;
+      }
+      setBadges();
+      renderTask();
+      return;
+    }
+  };
+}
+
+function exportJson() {
+  const payload = JSON.parse(JSON.stringify(state.local));
+  payload.meta.endedAt = new Date().toISOString();
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:"application/json"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `data_${state.uid}_g${state.group}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function exportXlsx() {
+  const wb = XLSX.utils.book_new();
+  const meta = [state.local.meta];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(meta), "meta");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([state.local.thinking]), "survey_thinking");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([state.local.pre]), "survey_pre");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(state.local.tasks), "tasks");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([state.local.post]), "survey_post");
+  XLSX.writeFile(wb, `data_${state.uid}_g${state.group}.xlsx`);
+}
+
+$("downloadJsonBtn").onclick = exportJson;
+$("downloadXlsxBtn").onclick = exportXlsx;
+
+start();
+</script>
+</body>
+</html>
