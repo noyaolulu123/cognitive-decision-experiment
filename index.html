@@ -103,6 +103,7 @@ body.surveyMode aside.card{display:none;}
         <div id="aiText" class="aiText" style="display:none;"></div>
 
         <div id="endDownloadArea" style="display:none;margin-top:10px;">
+          <div id="uploadStatus" class="muted" style="margin:0 0 8px 0;font-weight:800;">（尚未提交）</div>
           <div class="row">
             <button id="downloadXlsxBtn" class="primary">下载 Excel（XLSX）</button>
             <button id="downloadJsonBtn">下载 JSON</button>
@@ -138,6 +139,8 @@ async function uploadToSheet() {
   // 补充一些 meta（便于你后端统一识别）
   try {
     state.local.meta.uid = state.uid || state.local.meta.uid;
+    state.local.meta.participant_id = state.local.meta.participant_id || state.local.meta.uid;
+    state.local.meta.group_code = state.local.meta.group_code || state.local.meta.group;
     state.local.meta.group = state.group || state.local.meta.group;
     state.local.meta.trust_mechanism = state.local.meta.trust_mechanism || state.groupCfg.trust;
     state.local.meta.trust_bias = state.local.meta.trust_bias || state.groupCfg.bias;
@@ -161,10 +164,14 @@ async function uploadToSheet() {
   // 关键：用 application/x-www-form-urlencoded 避免触发 CORS 预检（OPTIONS）
   const form = new URLSearchParams();
   form.set("payload", bodyJson);
+  form.set("data", bodyJson);
+  form.set("json", bodyJson);
+  form.set("uid", state.local.meta.participant_id || state.uid || "");
+  form.set("group_code", String(state.local.meta.group_code || state.group || ""));
 
   // 1) no-cors：最稳（浏览器读不到响应，但请求能发出去，后端就能写表）
   try {
-    await fetch(WEB_APP_URL, {
+    await fetch(WEB_APP_URL + "?v=" + Date.now(), {
       method: "POST",
       mode: "no-cors",
       body: form,
@@ -337,6 +344,13 @@ function randId(){
   return "U"+Date.now().toString(36)+s;
 }
 
+
+function normalizeTrustFormation(v){
+  // Excel 字段使用 accumulated；代码内部使用 cumulative
+  if(v==="cumulative") return "accumulated";
+  return v;
+}
+
 function qsParam(name){
   const u=new URL(location.href);
   return u.searchParams.get(name);
@@ -348,14 +362,20 @@ function start() {
   state.local.meta.startedAt = new Date().toISOString();
   state.local.meta.userAgent = navigator.userAgent;
   state.local.meta.uid = state.uid;
+  // === 字段映射：与 Excel/Google Sheet 字段保持一致 ===
+  state.local.meta.participant_id = state.uid;
+  // start_time/end_time/completed 在结束时补齐
+  state.local.meta.start_time = state.local.meta.startedAt;
+
 
   const g = parseInt(qsParam("g")||"",10);
   if(g>=1 && g<=8) {
     state.group = g;
     state.groupCfg = GROUPS[g];
     state.local.meta.group = g;
+    state.local.meta.group_code = g;
     // 写入组别条件，便于后端直接入表
-    state.local.meta.trust_formation = state.groupCfg.trust;
+    state.local.meta.trust_formation = normalizeTrustFormation(state.groupCfg.trust);
     state.local.meta.trust_bias = state.groupCfg.bias;
     state.local.meta.calibration_strategy = state.groupCfg.strategy;
   }
@@ -444,8 +464,9 @@ function renderGroupSelect() {
     state.group=v;
     state.groupCfg=GROUPS[v];
     state.local.meta.group=v;
+    state.local.meta.group_code=v;
     // 写入组别条件，便于后端直接入表
-    state.local.meta.trust_formation = state.groupCfg.trust;
+    state.local.meta.trust_formation = normalizeTrustFormation(state.groupCfg.trust);
     state.local.meta.trust_bias = state.groupCfg.bias;
     state.local.meta.calibration_strategy = state.groupCfg.strategy;
     toThinkingSurvey();
@@ -614,6 +635,10 @@ function toEnd() {
   aiIdle();
   $("endDownloadArea").style.display="block";
   renderEnd();
+
+  // 标记结束时间与完成状态（与表头字段一致）
+  state.local.meta.end_time = new Date().toISOString();
+  state.local.meta.completed = 1;
 
   // 自动上传
   setUploadStatus("数据提交中…");
