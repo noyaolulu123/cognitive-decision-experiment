@@ -142,9 +142,9 @@ async function uploadToSheet() {
     state.local.meta.participant_id = state.local.meta.participant_id || state.local.meta.uid;
     state.local.meta.group_code = state.local.meta.group_code || state.local.meta.group;
     state.local.meta.group = state.group || state.local.meta.group;
-    state.local.meta.trust_mechanism = state.local.meta.trust_mechanism || state.groupCfg.trust;
+    state.local.meta.trust_formation = state.local.meta.trust_formation || normalizeTrustFormation(state.groupCfg.trust);
     state.local.meta.trust_bias = state.local.meta.trust_bias || state.groupCfg.bias;
-    state.local.meta.calibration_strategy = state.local.meta.calibration_strategy || state.groupCfg.strategy;
+    state.local.meta.calibration_strategy = state.local.meta.calibration_strategy || (state.groupCfg.strategy==="uncertainty" ? "weakness" : state.groupCfg.strategy);
     state.local.meta._uploadedAtClient = new Date().toISOString();
     state.local.meta._pageUrl = location.href;
     state.local.meta._userAgent = navigator.userAgent;
@@ -222,22 +222,22 @@ const GROUPS = {
     "strategy": "uncertainty"
   },
   "5": {
-    "trust": "cumulative",
+    "trust": "accumulated",
     "bias": "over",
     "strategy": "explanation"
   },
   "6": {
-    "trust": "cumulative",
+    "trust": "accumulated",
     "bias": "over",
     "strategy": "uncertainty"
   },
   "7": {
-    "trust": "cumulative",
+    "trust": "accumulated",
     "bias": "under",
     "strategy": "explanation"
   },
   "8": {
-    "trust": "cumulative",
+    "trust": "accumulated",
     "bias": "under",
     "strategy": "uncertainty"
   }
@@ -346,8 +346,10 @@ function randId(){
 
 
 function normalizeTrustFormation(v){
-  // Excel 字段使用 accumulated；代码内部使用 cumulative
+  // Excel: initial / accumulated
+  if(!v) return v;
   if(v==="cumulative") return "accumulated";
+  if(v==="accumulated") return "accumulated";
   return v;
 }
 
@@ -1010,23 +1012,21 @@ function renderTask() {
 
     showModal("确认提交", "确认提交第一次答案并查看 AI 建议吗？", ()=>{
       const rec = {
-        uid: state.uid,
-        group: state.group,
-        phase: state.phase,
-        taskBank: (state.phase==="tasks_cumulative"?"cumulative":"main"),
-        qid: q.qid,
-        correct: q.correct,
-        ai: q.ai,
-        ai_correct: !!q.ai_correct,
-        initial_choice: initialChoice,
-        final_choice: null,
-        adopted: null,
-        initial_correct: (initialChoice===q.correct),
+        participant_id: state.local.meta.participant_id || state.uid,
+        group_code: String(state.local.meta.group_code || state.group || ""),
+        phase: (state.phase==="tasks_cumulative") ? "trust_building" : "formal_test",
+        task_index: state.stepIdx + 1,
+        question_id: q.qid,
+        initial_answer: initialChoice,
+        ai_suggestion: q.ai,
+        final_answer: null,
+        ai_correct: q.ai_correct ? 1 : 0,
+        initial_correct: (initialChoice===q.correct) ? 1 : 0,
         final_correct: null,
-        ts_initial: new Date().toISOString(),
-        ts_final: null
-      };
-      $("leftArea").dataset.tmpRec = JSON.stringify(rec);
+        adopted: null,
+        switched: null,
+        timestamp: new Date().toISOString()
+      };      $("leftArea").dataset.tmpRec = JSON.stringify(rec);
 
       // 清除第一次勾选
       document.querySelectorAll('input[name="ans"]').forEach(r=>r.checked=false);
@@ -1052,10 +1052,16 @@ function renderTask() {
 
     showModal("确认提交", "确认提交最终答案吗？", ()=>{
       const rec = JSON.parse($("leftArea").dataset.tmpRec||"{}");
-      rec.final_choice = finalChoice;
-      rec.adopted = (finalChoice===q.ai);
-      rec.final_correct = (finalChoice===q.correct);
-      rec.ts_final = new Date().toISOString();
+      rec.final_answer = finalChoice;
+      rec.ai_suggestion = q.ai;
+      rec.adopted = (finalChoice===q.ai)?1:0;
+      rec.final_correct = (finalChoice===q.correct)?1:0;
+      rec.switched = (rec.initial_answer && rec.initial_answer!==finalChoice)?1:0;
+      rec.timestamp = new Date().toISOString();
+      // 规范化字段
+      rec.participant_id = state.local.meta.participant_id || state.uid;
+      rec.group_code = String(state.local.meta.group_code || state.group || "");
+      rec.phase = (state.phase==="tasks_cumulative") ? "trust_building" : "formal_test";
       state.local.tasks.push(rec);
 
       document.querySelectorAll('input[name="ans"]').forEach(r=>r.disabled=true);
