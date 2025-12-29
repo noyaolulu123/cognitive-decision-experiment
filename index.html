@@ -128,7 +128,7 @@ body.surveyMode aside.card{display:none;}
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
-const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyWhffkUg8lITDlVDbUhhPwO8nBd4o--wTECiLNjzyg2uKUjfd3J7MI7vhGblwEhBx02w/exec";
+const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyM_-64X0Ar9LTEoZcTYqZQ5RcuuDYdNdCXcQ8HlzeCLZZn-4H9_hEXnEGewDDpGga6Kg/exec";
 // ===== 自动上传到 Google Sheet（Apps Script Web App）=====
 async function uploadToSheet() {
   // 防止重复提交
@@ -143,21 +143,15 @@ async function uploadToSheet() {
     state.local.meta.group_code = state.local.meta.group_code || state.local.meta.group;
     state.local.meta.group = state.group || state.local.meta.group;
     state.local.meta.trust_formation = state.local.meta.trust_formation || normalizeTrustFormation(state.groupCfg.trust);
-    state.local.meta.trust_bias = state.local.meta.trust_bias || state.groupCfg.bias;
-    state.local.meta.calibration_strategy = state.local.meta.calibration_strategy || (state.groupCfg.strategy==="uncertainty" ? "weakness" : state.groupCfg.strategy);
+    state.local.meta.bias_condition = state.local.meta.bias_condition || state.groupCfg.bias;
+    state.local.meta.strategy_condition = state.local.meta.strategy_condition || state.groupCfg.strategy;
     state.local.meta._uploadedAtClient = new Date().toISOString();
     state.local.meta._pageUrl = location.href;
     state.local.meta._userAgent = navigator.userAgent;
   } catch(e) {}
 
-  // 统一 payload 结构（与你的 state.local 一致）
-  const payload = {
-    meta: state.local.meta || {},
-    thinking: state.local.thinking || {},
-    pre: state.local.pre || {},
-    tasks: state.local.tasks || [],
-    post: state.local.post || {}
-  };
+  // 统一 payload 结构：按数据字典拆成三张表（participants / survey_responses / trials）
+  const payload = buildCloudPayload();
 
   const bodyJson = JSON.stringify(payload);
 
@@ -197,6 +191,113 @@ async function uploadToSheet() {
 function setUploadStatus(msg) {
   const el = document.getElementById("uploadStatus");
   if (el) el.textContent = msg;
+
+// ===== 数据字典（v7_clean）→ 云端三表行转换 =====
+function buildCloudPayload(){
+  const m = state.local.meta || {};
+  const group_code = parseInt(m.group_code || state.group || "0", 10) || 0;
+  const participantsRow = {
+    participant_id: m.participant_id || state.uid || "",
+    group_code,
+    trust_formation: m.trust_formation || normalizeTrustFormation(state.groupCfg?.trust),
+    bias_condition: m.bias_condition || state.groupCfg?.bias || "",
+    strategy_condition: m.strategy_condition || state.groupCfg?.strategy || "",
+    schema_version: m.schema_version || "v7_clean",
+    start_timestamp: m.start_timestamp || new Date().toISOString(),
+    end_timestamp: m.end_timestamp || "",
+    completed: m.completed || "false",
+    dropout_stage: m.dropout_stage || ""
+  };
+
+  const surveyRows = [];
+  function pushSurveyRows(stageVal, surveyName, ansObj, order){
+    if(!ansObj) return;
+    const ts = ansObj._submittedAt || new Date().toISOString();
+    let qid = 1;
+    order.forEach(getVal=>{
+      const v = getVal(ansObj);
+      surveyRows.push({
+        participant_id: participantsRow.participant_id,
+        group_code,
+        survey_stage: stageVal,
+        survey_name: surveyName,
+        question_id: qid++,
+        response_value: (v===undefined || v===null) ? "" : String(v),
+        response_timestamp: ts,
+        response_time_ms: ""
+      });
+    });
+  }
+
+  // 1) 思维习惯（pre_critical / thinking）
+  const thinkingItems = (SURVEYS.thinking && SURVEYS.thinking.items) ? SURVEYS.thinking.items.length : 0;
+  pushSurveyRows("pre_critical","thinking", state.local.thinking, Array.from({length:thinkingItems}, (_,i)=> (a)=>a[`thinking_${i}`]));
+
+  // 2) 前测信任：初始信任组 / 积累信任组
+  if(state.groupCfg && state.groupCfg.trust==="initial"){
+    const S = SURVEYS.initial_pre;
+    const tbN = S.trust_belief_items.length;
+    const tiN = S.trust_intent_items.length;
+    const order = [];
+    order.push(a=>a.Q1);
+    for(let i=0;i<tbN;i++) order.push(a=>a.TrustBelief?.[`pre_tb_${i}`]);
+    for(let i=0;i<tiN;i++) order.push(a=>a.TrustIntention?.[`pre_ti_${i}`]);
+    order.push(a=>a.Q3);
+    pushSurveyRows("pre_trust_initial","trust_pre", state.local.pre, order);
+  } else {
+    // accumulated
+    const S = SURVEYS.cumulative_pre;
+    const tbN = S.trust_belief_items.length;
+    const tiN = S.trust_intent_items.length;
+    const order = [];
+    // 这里按页面渲染顺序：TB → TI → slider(Q5) → single(Q6)
+    for(let i=0;i<tbN;i++) order.push(a=>a.TrustBelief?.[`pre_tb_${i}`]);
+    for(let i=0;i<tiN;i++) order.push(a=>a.TrustIntention?.[`pre_ti_${i}`]);
+    order.push(a=>a.Q5_subjective_accuracy);
+    order.push(a=>a.Q6_behavior_intent);
+    pushSurveyRows("pre_trust_accumulated","trust_pre", state.local.pre, order);
+  }
+
+  // 3) 后测（post_trust / trust_post）
+  if(state.local.post){
+    const S = SURVEYS.post;
+    const tbN = S.trust_belief_items.length;
+    const tiN = S.trust_intent_items.length;
+    const order = [];
+    for(let i=0;i<tbN;i++) order.push(a=>a.TrustBelief?.[`post_tb_${i}`]);
+    for(let i=0;i<tiN;i++) order.push(a=>a.TrustIntention?.[`post_ti_${i}`]);
+    order.push(a=>a.Q5_subjective_accuracy);
+    order.push(a=>a.Q6_behavior_intent);
+    pushSurveyRows("post_trust","trust_post", state.local.post, order);
+  }
+
+  // trials：直接用 state.local.tasks（已在做题时按字段写入）
+  const trialsRows = (state.local.tasks||[]).map(r=>({
+    participant_id: participantsRow.participant_id,
+    group_code,
+    phase: r.phase || "",
+    task_index: r.task_index || "",
+    task_id: r.task_id || "",
+    correct_answer: r.correct_answer || "",
+    initial_answer: r.initial_answer || "",
+    ai_answer: r.ai_answer || "",
+    final_answer: r.final_answer || "",
+    initial_response_time_ms: r.initial_response_time_ms || "",
+    final_response_time_ms: r.final_response_time_ms || "",
+    ai_shown_timestamp: r.ai_shown_timestamp || ""
+  }));
+
+  // 兼容：同时带上 raw，便于后端排查
+  return {
+    schema_version: participantsRow.schema_version,
+    tables: {
+      participants: [participantsRow],
+      survey_responses: surveyRows,
+      trials: trialsRows
+    },
+    raw: { meta: state.local.meta||{}, thinking: state.local.thinking||{}, pre: state.local.pre||{}, tasks: state.local.tasks||[], post: state.local.post||{} }
+  };
+}
 }
 
 
@@ -361,13 +462,13 @@ function qsParam(name){
 function start() {
   state.uid = qsParam("uid") || localStorage.getItem("cog_uid") || randId();
   localStorage.setItem("cog_uid", state.uid);
-  state.local.meta.startedAt = new Date().toISOString();
-  state.local.meta.userAgent = navigator.userAgent;
-  state.local.meta.uid = state.uid;
-  // === 字段映射：与 Excel/Google Sheet 字段保持一致 ===
+  state.local.meta.schema_version = "v7_clean";
   state.local.meta.participant_id = state.uid;
-  // start_time/end_time/completed 在结束时补齐
-  state.local.meta.start_time = state.local.meta.startedAt;
+  state.local.meta.start_timestamp = new Date().toISOString();
+  state.local.meta._userAgent = navigator.userAgent;
+  state.local.meta._pageUrl = location.href;
+  // end_timestamp/completed/dropout_stage 在结束时补齐
+  state.local.meta.start_timestamp = state.local.meta.start_timestamp;
 
 
   const g = parseInt(qsParam("g")||"",10);
@@ -378,8 +479,8 @@ function start() {
     state.local.meta.group_code = g;
     // 写入组别条件，便于后端直接入表
     state.local.meta.trust_formation = normalizeTrustFormation(state.groupCfg.trust);
-    state.local.meta.trust_bias = state.groupCfg.bias;
-    state.local.meta.calibration_strategy = state.groupCfg.strategy;
+    state.local.meta.bias_condition = state.groupCfg.bias;
+    state.local.meta.strategy_condition = state.groupCfg.strategy;
   }
   toWelcome();
 }
@@ -469,8 +570,8 @@ function renderGroupSelect() {
     state.local.meta.group_code=v;
     // 写入组别条件，便于后端直接入表
     state.local.meta.trust_formation = normalizeTrustFormation(state.groupCfg.trust);
-    state.local.meta.trust_bias = state.groupCfg.bias;
-    state.local.meta.calibration_strategy = state.groupCfg.strategy;
+    state.local.meta.bias_condition = state.groupCfg.bias;
+    state.local.meta.strategy_condition = state.groupCfg.strategy;
     toThinkingSurvey();
   };
 }
@@ -639,8 +740,9 @@ function toEnd() {
   renderEnd();
 
   // 标记结束时间与完成状态（与表头字段一致）
-  state.local.meta.end_time = new Date().toISOString();
-  state.local.meta.completed = 1;
+  state.local.meta.end_timestamp = new Date().toISOString();
+  state.local.meta.completed = "true";
+  state.local.meta.dropout_stage = "";
 
   // 自动上传
   setUploadStatus("数据提交中…");
@@ -1003,6 +1105,8 @@ function renderTask() {
 
   aiIdle();
 
+  const taskStartMs = Date.now();
+  let aiShownMs = null;
   let initialChoice = null;
 
   $("submit1Btn").onclick = ()=>{
@@ -1013,20 +1117,20 @@ function renderTask() {
     showModal("确认提交", "确认提交第一次答案并查看 AI 建议吗？", ()=>{
       const rec = {
         participant_id: state.local.meta.participant_id || state.uid,
-        group_code: String(state.local.meta.group_code || state.group || ""),
-        phase: (state.phase==="tasks_cumulative") ? "trust_building" : "formal_test",
+        group_code: parseInt(state.local.meta.group_code || state.group || "0", 10) || 0,
+        phase: (state.phase==="tasks_cumulative") ? "cumulative" : "main",
         task_index: state.stepIdx + 1,
-        question_id: q.qid,
+        task_id: q.qid,
+        correct_answer: q.correct,
         initial_answer: initialChoice,
-        ai_suggestion: q.ai,
-        final_answer: null,
-        ai_correct: q.ai_correct ? 1 : 0,
-        initial_correct: (initialChoice===q.correct) ? 1 : 0,
-        final_correct: null,
-        adopted: null,
-        switched: null,
-        timestamp: new Date().toISOString()
-      };      $("leftArea").dataset.tmpRec = JSON.stringify(rec);
+        ai_answer: q.ai,
+        final_answer: "",
+        initial_response_time_ms: Date.now() - taskStartMs,
+        final_response_time_ms: "",
+        ai_shown_timestamp: new Date().toISOString()
+      };
+      aiShownMs = Date.now();
+      $("leftArea").dataset.tmpRec = JSON.stringify(rec);
 
       // 清除第一次勾选
       document.querySelectorAll('input[name="ans"]').forEach(r=>r.checked=false);
@@ -1053,15 +1157,11 @@ function renderTask() {
     showModal("确认提交", "确认提交最终答案吗？", ()=>{
       const rec = JSON.parse($("leftArea").dataset.tmpRec||"{}");
       rec.final_answer = finalChoice;
-      rec.ai_suggestion = q.ai;
-      rec.adopted = (finalChoice===q.ai)?1:0;
-      rec.final_correct = (finalChoice===q.correct)?1:0;
-      rec.switched = (rec.initial_answer && rec.initial_answer!==finalChoice)?1:0;
-      rec.timestamp = new Date().toISOString();
+      rec.final_response_time_ms = (aiShownMs ? (Date.now()-aiShownMs) : "");
       // 规范化字段
       rec.participant_id = state.local.meta.participant_id || state.uid;
-      rec.group_code = String(state.local.meta.group_code || state.group || "");
-      rec.phase = (state.phase==="tasks_cumulative") ? "trust_building" : "formal_test";
+      rec.group_code = parseInt(state.local.meta.group_code || state.group || "0", 10) || 0;
+      rec.phase = (state.phase==="tasks_cumulative") ? "cumulative" : "main";
       state.local.tasks.push(rec);
 
       document.querySelectorAll('input[name="ans"]').forEach(r=>r.disabled=true);
@@ -1133,13 +1233,18 @@ function exportJson() {
 
 function exportXlsx() {
   const wb = XLSX.utils.book_new();
-  const meta = [state.local.meta];
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(meta), "meta");
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([state.local.thinking]), "survey_thinking");
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([state.local.pre]), "survey_pre");
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(state.local.tasks), "tasks");
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([state.local.post]), "survey_post");
-  XLSX.writeFile(wb, `data_${state.uid}_g${state.group}.xlsx`);
+  const payload = buildCloudPayload();
+  const T = payload.tables;
+
+  const headersParticipants = ["participant_id","group_code","trust_formation","bias_condition","strategy_condition","schema_version","start_timestamp","end_timestamp","completed","dropout_stage"];
+  const headersSurvey = ["participant_id","group_code","survey_stage","survey_name","question_id","response_value","response_timestamp","response_time_ms"];
+  const headersTrials = ["participant_id","group_code","phase","task_index","task_id","correct_answer","initial_answer","ai_answer","final_answer","initial_response_time_ms","final_response_time_ms","ai_shown_timestamp"];
+
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(T.participants||[], {header: headersParticipants}), "participants");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(T.survey_responses||[], {header: headersSurvey}), "survey_responses");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(T.trials||[], {header: headersTrials}), "trials");
+
+  XLSX.writeFile(wb, `cog_data_${state.uid || "participant"}.xlsx`);
 }
 
 $("downloadJsonBtn").onclick = exportJson;
