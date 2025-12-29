@@ -129,6 +129,17 @@ body.surveyMode aside.card{display:none;}
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzbjVZgPbrWRVyi-Lorf4FlB58yRoCnzftTGBMHXDbVVzKV51QNHdVhF4uHwRbwVCcMtg/exec";
+
+// --- Safe localStorage access (some browsers block it in privacy modes / embedded contexts) ---
+function safeLSGet(key){
+  try{ return (window.localStorage && typeof localStorage.getItem==="function") ? localStorage.getItem(key) : null; }
+  catch(e){ return null; }
+}
+function safeLSSet(key, val){
+  try{ if(window.localStorage && typeof localStorage.setItem==="function") localStorage.setItem(key, val); }
+  catch(e){}
+}
+
 // ===== 自动上传到 Google Sheet（Apps Script Web App）=====
 async function uploadToSheet() {
   // 防止重复提交
@@ -459,8 +470,8 @@ function qsParam(name){
 }
 
 function start() {
-  state.uid = qsParam("uid") || localStorage.getItem("cog_uid") || randId();
-  localStorage.setItem("cog_uid", state.uid);
+  state.uid = qsParam("uid") || safeLSGet("cog_uid") || randId();
+  safeLSSet("cog_uid", state.uid);
   state.local.meta.schema_version = "v7_clean";
   state.local.meta.participant_id = state.uid;
   state.local.meta.start_timestamp = new Date().toISOString();
