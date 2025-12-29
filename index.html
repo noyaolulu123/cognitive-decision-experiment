@@ -375,6 +375,7 @@ const PERF_UNDER_PAGE = "【系统性能说明】:\n\n本系统专为辅助用�
 const $ = (id)=>document.getElementById(id);
 const state = {
   uid: null,
+  uidLocked: false,
   group: null,
   groupCfg: null,
   phase: "boot",
@@ -479,18 +480,20 @@ function qsParam(name){
 }
 
 function start() {
-  state.uid = qsParam("uid") || safeLSGet("cog_uid") || randId();
-  safeLSSet("cog_uid", state.uid);
+  const uidParam = qsParam("uid");
+  const g = parseInt(qsParam("g")||"",10);
+
+  // 重要：不要把 uid 固定写入 localStorage（否则你在同一台电脑测试多组时，后端可能会把后续提交当成重复而不写入）
+  state.uidLocked = !!uidParam;
+  state.uid = uidParam || randId();
+
   state.local.meta.schema_version = "v7_clean";
   state.local.meta.participant_id = state.uid;
   state.local.meta.start_timestamp = new Date().toISOString();
   state.local.meta._userAgent = navigator.userAgent;
   state.local.meta._pageUrl = location.href;
-  // end_timestamp/completed/dropout_stage 在结束时补齐
-  state.local.meta.start_timestamp = state.local.meta.start_timestamp;
 
-
-  const g = parseInt(qsParam("g")||"",10);
+  // 预先从链接参数锁定组别（如 ?g=2）
   if(g>=1 && g<=8) {
     state.group = g;
     state.groupCfg = GROUPS[g];
@@ -501,6 +504,7 @@ function start() {
     state.local.meta.bias_condition = state.groupCfg.bias;
     state.local.meta.strategy_condition = state.groupCfg.strategy;
   }
+
   toWelcome();
 }
 
@@ -583,6 +587,14 @@ function renderGroupSelect() {
       alert("请输入 1—8 的组别编号。");
       return;
     }
+    // 如果没有在链接里显式传 uid（即研究员分发的唯一链接），
+    // 那么每次选择组别都生成一个新的 participant_id，避免你在同一台电脑反复测试 1-8 组时产生“重复ID导致只写入第一组”的现象。
+    if(!state.uidLocked){
+      state.uid = randId();
+      state.local.meta.participant_id = state.uid;
+      setBadges();
+    }
+
     state.group=v;
     state.groupCfg=GROUPS[v];
     state.local.meta.group=v;
