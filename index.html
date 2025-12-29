@@ -191,10 +191,8 @@ async function uploadToSheet() {
 function setUploadStatus(msg) {
   const el = document.getElementById("uploadStatus");
   if (el) el.textContent = msg;
-
 }
 
-// ===== 数据字典（v7_clean）→ 云端三表行转换 =====
 function buildCloudPayload(){
   const m = state.local.meta || {};
   const group_code = parseInt(m.group_code || state.group || "0", 10) || 0;
@@ -299,7 +297,6 @@ function buildCloudPayload(){
     },
     raw: { meta: state.local.meta||{}, thinking: state.local.thinking||{}, pre: state.local.pre||{}, tasks: state.local.tasks||[], post: state.local.post||{} }
   };
-}
 }
 
 
