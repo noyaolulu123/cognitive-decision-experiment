@@ -128,9 +128,7 @@ body.surveyMode aside.card{display:none;}
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
-const WEB_APP_URL = "https://script.googleusercontent.com/macros/echo?user_content_key=AehSKLg1kZx3QRkFb2bY_aqti660-iADylrqdVBeBOJpG8539y-zjdOvZsr9dtQf7rxRkb8MFLoKSqb2VpI4-NgnZLJbulfT-pwfoDTdW28Hcy9wALZGjs126N7N_erGQXOx3fhctatDw3zM7lbUJ3Gp8LkFe_T-lI23qyE5aesRS3s2rjFytjOmLpPQW38szl80dAUjeJzHvkDi_u9bn3useehSqo91x-KC8bjbV5G_XuLf5UfxThjkUkI4g-S43PD3g3dl9crjZxmFefDzitFuf-velyuTHnzSn433yTVD-6KHhr_3WlEcfoKITI6MuQ&lib=M48rNSSE6xxj0J__-_CFrgjd-ZNhPTu-P";
-
-function withCacheBuster(url) {
+const WEB_APP_URL = (new URL(location.href)).searchParams.get("webapp") || "https://script.google.com/macros/s/AKfycbxoR-RVuW-4QCFjFOwrWe8Q3Qcp_FU8riwtr-vSyahB2EShaiCx_YgFd5YEffp-LwMy3A/exec";function withCacheBuster(url) {
   return url + (url.includes("?") ? "&" : "?") + "v=" + Date.now();
 }
 
@@ -373,6 +371,7 @@ const PERF_UNDER_PAGE = "【系统性能说明】:\n\n本系统专为辅助用�
 
 
 const $ = (id)=>document.getElementById(id);
+function safeOnclick(id, fn){ const el = $(id); if(el) el.onclick = fn; }
 const state = {
   uid: null,
   group: null,
@@ -430,8 +429,8 @@ function showModal(title, text, onYes){
   $("modalText").textContent = text;
   $("modalBg").style.display="flex";
   const cleanup = ()=>{ $("modalBg").style.display="none"; $("modalYes").onclick=null; $("modalNo").onclick=null; };
-  $("modalNo").onclick=()=>cleanup();
-  $("modalYes").onclick=()=>{ cleanup(); onYes(); };
+  safeOnclick("modalNo", ()=>cleanup());
+  safeOnclick("modalYes", ()=>{ cleanup(); onYes(); };
 }
 
 function setSurveyMode(on){
@@ -479,6 +478,10 @@ function qsParam(name){
 }
 
 function start() {
+  if (WEB_APP_URL.includes("PASTE_YOUR_SCRIPT_WEB_APP_EXEC_URL_HERE")) {
+    console.warn("[CONFIG] 请把 WEB_APP_URL 换成你部署后的 /exec 链接，或在链接后加 ?webapp=你的exec链接(需URL编码)");
+  }
+
   state.uid = qsParam("uid") || safeLSGet("cog_uid") || randId();
   safeLSSet("cog_uid", state.uid);
   state.local.meta.schema_version = "v7_clean";
@@ -542,7 +545,7 @@ function renderWelcome() {
       </div>
     </div>
   `;
-  $("welcomeStartBtn").onclick = ()=>{
+  safeOnclick("welcomeStartBtn", ()=>{
     state.local.meta.consentAt = new Date().toISOString();
     if(state.groupCfg) {
       toThinkingSurvey();
@@ -592,15 +595,6 @@ function renderGroupSelect() {
     state.local.meta.bias_condition = state.groupCfg.bias;
     state.local.meta.strategy_condition = state.groupCfg.strategy;
     toThinkingSurvey();
-  };
-
-  $("resetIdBtn").onclick = ()=>{
-    // 仅用于研究员/开发者同机测试：重置本标签页的 participant_id
-    state.uid = randId();
-    safeSSSet("cog_uid", state.uid);
-    state.local.meta.participant_id = state.uid;
-    $("idLine").textContent = "用户ID：" + (state.uid||"-");
-    alert("已重置本次用户ID：" + state.uid);
   };
 }
 
