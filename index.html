@@ -128,10 +128,7 @@ body.surveyMode aside.card{display:none;}
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
-const WEB_APP_URL = (new URL(location.href)).searchParams.get("webapp") || "https://script.google.com/macros/s/AKfycbxoR-RVuW-4QCFjFOwrWe8Q3Qcp_FU8riwtr-vSyahB2EShaiCx_YgFd5YEffp-LwMy3A/exec";function withCacheBuster(url) {
-  return url + (url.includes("?") ? "&" : "?") + "v=" + Date.now();
-}
-
+const WEB_APP_URL = "https://script.googleusercontent.com/macros/echo?user_content_key=AehSKLg1kZx3QRkFb2bY_aqti660-iADylrqdVBeBOJpG8539y-zjdOvZsr9dtQf7rxRkb8MFLoKSqb2VpI4-NgnZLJbulfT-pwfoDTdW28Hcy9wALZGjs126N7N_erGQXOx3fhctatDw3zM7lbUJ3Gp8LkFe_T-lI23qyE5aesRS3s2rjFytjOmLpPQW38szl80dAUjeJzHvkDi_u9bn3useehSqo91x-KC8bjbV5G_XuLf5UfxThjkUkI4g-S43PD3g3dl9crjZxmFefDzitFuf-velyuTHnzSn433yTVD-6KHhr_3WlEcfoKITI6MuQ&lib=M48rNSSE6xxj0J__-_CFrgjd-ZNhPTu-P";
 
 // --- Safe localStorage access (some browsers block it in privacy modes / embedded contexts) ---
 function safeLSGet(key){
@@ -179,11 +176,7 @@ async function uploadToSheet() {
 
   // 1) no-cors：最稳（浏览器读不到响应，但请求能发出去，后端就能写表）
   try {
-    console.log("[upload] url=", WEB_APP_URL);
-    console.log("[upload] body chars=", bodyJson.length);
-  } catch(e) {}
-  try {
-    await fetch(withCacheBuster(WEB_APP_URL), {
+    await fetch(WEB_APP_URL + "?v=" + Date.now(), {
       method: "POST",
       mode: "no-cors",
       body: form,
@@ -271,12 +264,13 @@ function buildCloudPayload(){
     // 这里按页面渲染顺序：TB → TI → slider(Q5) → single(Q6)
     for(let i=0;i<tbN;i++) order.push(a=>a.TrustBelief?.[`pre_tb_${i}`]);
     for(let i=0;i<tiN;i++) order.push(a=>a.TrustIntention?.[`pre_ti_${i}`]);
-    order.push(a=>a.Q5_subjective_accuracy);
-    order.push(a=>a.Q6_behavior_intent);
+    // 兼容不同字段命名：本版本问卷保存为 Q5 / Q6
+    order.push(a=> (a.Q5_subjective_accuracy ?? a.Q5));
+    order.push(a=> (a.Q6_behavior_intent ?? a.Q6));
     pushSurveyRows("pre_trust_accumulated","trust_pre", state.local.pre, order);
   }
 
-  // 3) 后测（post_trust / trust_post）
+// 3) 后测（post_trust / trust_post）
   if(state.local.post){
     const S = SURVEYS.post;
     const tbN = S.trust_belief_items.length;
@@ -284,12 +278,10 @@ function buildCloudPayload(){
     const order = [];
     for(let i=0;i<tbN;i++) order.push(a=>a.TrustBelief?.[`post_tb_${i}`]);
     for(let i=0;i<tiN;i++) order.push(a=>a.TrustIntention?.[`post_ti_${i}`]);
-    order.push(a=>a.Q5_subjective_accuracy);
-    order.push(a=>a.Q6_behavior_intent);
     pushSurveyRows("post_trust","trust_post", state.local.post, order);
   }
 
-  // trials：直接用 state.local.tasks（已在做题时按字段写入）
+// trials：直接用 state.local.tasks（已在做题时按字段写入）
   const trialsRows = (state.local.tasks||[]).map(r=>({
     participant_id: participantsRow.participant_id,
     group_code,
@@ -371,7 +363,6 @@ const PERF_UNDER_PAGE = "【系统性能说明】:\n\n本系统专为辅助用�
 
 
 const $ = (id)=>document.getElementById(id);
-function safeOnclick(id, fn){ const el = $(id); if(el) el.onclick = fn; }
 const state = {
   uid: null,
   group: null,
@@ -429,8 +420,8 @@ function showModal(title, text, onYes){
   $("modalText").textContent = text;
   $("modalBg").style.display="flex";
   const cleanup = ()=>{ $("modalBg").style.display="none"; $("modalYes").onclick=null; $("modalNo").onclick=null; };
-  safeOnclick("modalNo", ()=>cleanup());
-  safeOnclick("modalYes", ()=>{ cleanup(); onYes(); };
+  $("modalNo").onclick=()=>cleanup();
+  $("modalYes").onclick=()=>{ cleanup(); onYes(); };
 }
 
 function setSurveyMode(on){
@@ -478,10 +469,6 @@ function qsParam(name){
 }
 
 function start() {
-  if (WEB_APP_URL.includes("PASTE_YOUR_SCRIPT_WEB_APP_EXEC_URL_HERE")) {
-    console.warn("[CONFIG] 请把 WEB_APP_URL 换成你部署后的 /exec 链接，或在链接后加 ?webapp=你的exec链接(需URL编码)");
-  }
-
   state.uid = qsParam("uid") || safeLSGet("cog_uid") || randId();
   safeLSSet("cog_uid", state.uid);
   state.local.meta.schema_version = "v7_clean";
@@ -545,7 +532,7 @@ function renderWelcome() {
       </div>
     </div>
   `;
-  safeOnclick("welcomeStartBtn", ()=>{
+  $("welcomeStartBtn").onclick = ()=>{
     state.local.meta.consentAt = new Date().toISOString();
     if(state.groupCfg) {
       toThinkingSurvey();
@@ -799,23 +786,12 @@ function renderEnd() {
       <div class="sep"></div>
       <div class="small">你的用户ID：<b>${state.uid}</b></div>
       <div id="uploadStatus" class="muted" style="margin-top:8px;">数据提交中…</div>
-      <div class="row" style="justify-content:flex-end;margin-top:12px;gap:8px;">
-        <button id="retryUploadBtn">重试上传</button>
+      <div class="row" style="justify-content:flex-end;margin-top:12px;">
         <button id="exitBtn" class="primary">退出</button>
       </div>
       <div class="muted" style="margin-top:8px;">如页面未自动关闭，请手动关闭浏览器标签页。</div>
     </div>
   `;
-
-  $("retryUploadBtn").onclick = async ()=>{
-    setUploadStatus("数据提交中…");
-    const r = await uploadToSheet();
-    if(r && r.ok){
-      setUploadStatus("数据已提交（"+(r.method||"")+(r.status?(" / "+r.status):"")+"）。感谢参与！");
-    } else {
-      setUploadStatus("数据提交失败（可能是网络/部署/CORS原因）。请下载备份并发送给研究员。");
-    }
-  };
 
   $("exitBtn").onclick = ()=>{
     try { window.close(); } catch(e) {}
