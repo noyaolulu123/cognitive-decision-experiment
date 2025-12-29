@@ -593,6 +593,15 @@ function renderGroupSelect() {
     state.local.meta.strategy_condition = state.groupCfg.strategy;
     toThinkingSurvey();
   };
+
+  $("resetIdBtn").onclick = ()=>{
+    // 仅用于研究员/开发者同机测试：重置本标签页的 participant_id
+    state.uid = randId();
+    safeSSSet("cog_uid", state.uid);
+    state.local.meta.participant_id = state.uid;
+    $("idLine").textContent = "用户ID：" + (state.uid||"-");
+    alert("已重置本次用户ID：" + state.uid);
+  };
 }
 
 function toThinkingSurvey() {
