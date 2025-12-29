@@ -807,26 +807,45 @@ function renderLikertSurvey(key, onDone) {
 
 function renderLikertSurveyItems(key, onDone) {
   const S = SURVEYS[key];
-  const items = S.items;
+  const items = (S && Array.isArray(S.items)) ? S.items : [];
   const scale = [1,2,3,4,5];
+
+  // 记录整份问卷耗时（可选）
+  const t0 = Date.now();
+
+  // 允许刷新回填（如果用户返回/刷新）
+  const prev = (state.local && state.local[key]) ? state.local[key] : null;
 
   let html = `
     <div class="notice">
-      <div style="font-weight:900;margin-bottom:6px;">${S.title}</div>
-      ${S.intro ? `<div class="qText">${escapeHtml(S.intro)}</div>` : ``}
-      ${S.instruction ? `<div class="qText">${escapeHtml(S.instruction)}</div>` : ``}
+      <div style="font-weight:900;margin-bottom:6px;">${escapeHtml(S?.title || "")}</div>
+      ${S?.intro ? `<div class="qText">${escapeHtml(S.intro)}</div>` : ``}
+      ${S?.instruction ? `<div class="qText">${escapeHtml(S.instruction)}</div>` : ``}
       <div class="sep"></div>
   `;
 
   items.forEach((it, idx)=>{
-    const name = `L_${key}_${idx}`;
+    // 页面渲染统一使用 0-based name：L_${key}_${idx}
+    const name0 = `L_${key}_${idx}`;
+    const qNum = idx + 1;
+
+    // 回填兼容：0-based / 1-based / alternate / numeric
+    const prevVal =
+      prev?.[name0] ??
+      prev?.[`L_${key}_${qNum}`] ??
+      prev?.[`${key}_${idx}`] ??
+      prev?.[`${key}_${qNum}`] ??
+      prev?.[qNum] ??
+      prev?.[String(qNum)] ??
+      null;
+
     html += `
       <div class="likertItem">
-        <div class="t">${idx+1}. ${escapeHtml(it)}</div>
+        <div class="t">${qNum}. ${escapeHtml(it)}</div>
         <div class="likertRow">
           ${scale.map(v=>`
             <div class="likertChoice">
-              <input type="radio" name="${name}" value="${v}"/>
+              <input type="radio" name="${name0}" value="${v}" ${(prevVal!==null && String(prevVal)===String(v)) ? "checked" : ""}/>
               <label>${v}</label>
             </div>
           `).join("")}
@@ -845,13 +864,31 @@ function renderLikertSurveyItems(key, onDone) {
 
   $("surveySubmitBtn").onclick = ()=>{
     const ans={};
+
     for(let idx=0; idx<items.length; idx++) {
-      const name = `L_${key}_${idx}`;
-      const el = document.querySelector(`input[name="${name}"]:checked`);
+      const qNum = idx + 1;
+
+      // 统一只从 0-based name 读取（因为渲染就是用它）
+      const name0 = `L_${key}_${idx}`;
+      const el = document.querySelector(`input[name="${name0}"]:checked`);
       if(!el) { alert("请完成所有题目后再提交。"); return; }
-      ans[name] = parseInt(el.value,10);
+      const val = parseInt(el.value,10);
+
+      // ✅ 关键：同一答案写入多套 key（兼容入表读取逻辑 & 旧版数据）
+      ans[name0] = val;                   // L_thinking_0...（buildCloudPayload 优先读这个）
+      ans[`L_${key}_${qNum}`] = val;       // L_thinking_1...（兼容旧版 1-based）
+      ans[`${key}_${idx}`] = val;          // thinking_0...（兼容）
+      ans[`${key}_${qNum}`] = val;         // thinking_1...（兼容）
+      ans[qNum] = val;                     // numeric（兼容 a[i+1]）
+      ans[String(qNum)] = val;             // string numeric（兼容 a[String(i+1)]）
     }
+
     ans._submittedAt = new Date().toISOString();
+    ans._response_time_ms_total = String(Date.now() - t0);
+
+    // ✅ 必须回存到 state，后端 buildCloudPayload 才能读到
+    if(state.local) state.local[key] = ans;
+
     onDone(ans);
   };
 }
