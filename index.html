@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>认知决策平台（重构版 v7 · clean）</title>
+<title>认知决策平台</title>
 <style>
 
 :root{--bg:#f6f8fb;--card:#fff;--text:#0f172a;--muted:#64748b;--line:#e5e7eb;--accent:#2563eb;--ok:#16a34a;--bad:#dc2626;--hint:#64748b;}
@@ -242,7 +242,7 @@ function buildCloudPayload(){
 
   // 1) 思维习惯（pre_critical / thinking）
   const thinkingItems = (SURVEYS.thinking && SURVEYS.thinking.items) ? SURVEYS.thinking.items.length : 0;
-  pushSurveyRows("pre_critical","thinking", state.local.thinking, Array.from({length:thinkingItems}, (_,i)=> (a)=> (a[i+1] ?? a[String(i+1)] ?? a[`thinking_${i}`]) ));
+  pushSurveyRows("pre_critical","thinking", state.local.thinking, Array.from({length:thinkingItems}, (_,i)=> (a)=> (a[`L_thinking_${i}`] ?? a[`thinking_${i}`] ?? a[i+1] ?? a[String(i+1)]) ));
 
   // 2) 前测信任：初始信任组 / 积累信任组
   if(state.groupCfg && state.groupCfg.trust==="initial"){
