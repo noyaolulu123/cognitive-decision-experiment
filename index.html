@@ -739,6 +739,9 @@ function toMainTasksIntro() {
   setSurveyMode(true); // 仅展示导语页面
   aiIdle();
 
+  // 确保所有组在进入正式8题前都会看到本导语（只显示一次）
+  state.local.meta._mainIntroShown = true;
+
   const body =
 `接下来，请您完成 8 道逻辑推理题目。
 
@@ -770,7 +773,7 @@ function toMainTasksIntro() {
   setBadges();
 }
 
-function toTasksMain() {
+function toTasksMainReal() {
   state.phase="tasks_main";
   setSurveyMode(false);
   state.stepIdx=0;
@@ -778,6 +781,12 @@ function toTasksMain() {
   setTopLine("任务阶段：共 8 道题（不公布每题正确答案）");
   setBadges();
   renderTask();
+}
+
+function toTasksMain() {
+  // 兜底：若因任何路径跳过导语页，则先展示导语再进入正式题目
+  if(!state.local.meta._mainIntroShown) { toMainTasksIntro(); return; }
+  toTasksMainReal();
 }
 
 
