@@ -427,6 +427,7 @@ function phaseLabel(p){
     system_perf:"系统性能说明",
     survey_pre:"问卷：阶段二",
     tasks_cumulative:"练习题",
+    tasks_main_intro:"进入测试题",
     tasks_main:"任务题",
     post_intro:"进入后测问卷",
     survey_post:"问卷：阶段三",
@@ -705,7 +706,7 @@ function toPreSurvey() {
   setSurveyMode(true);
   aiIdle();
   if(state.groupCfg.trust==="initial") {
-    renderInitialPreSurveyItems((ans)=>{ state.local.pre = ans; toTasksMain(); });
+    renderInitialPreSurveyItems((ans)=>{ state.local.pre = ans; toMainTasksIntro(); });
     setTopLine("请完成：问卷（阶段二）");
     setBadges();
   } else {
@@ -728,8 +729,44 @@ function toCumulativePreSurvey() {
   state.phase="survey_pre";
   setSurveyMode(true);
   aiIdle();
-  renderCumulativePreSurvey((ans)=>{ state.local.pre = ans; toTasksMain(); });
+  renderCumulativePreSurvey((ans)=>{ state.local.pre = ans; toMainTasksIntro(); });
   setTopLine("请完成：问卷（阶段二）");
+  setBadges();
+}
+
+function toMainTasksIntro() {
+  state.phase="tasks_main_intro";
+  setSurveyMode(true); // 仅展示导语页面
+  aiIdle();
+
+  const body =
+`接下来，请您完成 8 道逻辑推理题目。
+
+每道题的答题流程如下：
+独立作答：请先阅读题目，并选出您认为正确的答案。
+参考AI建议：提交您的答案后，系统会展示 AI 系统对本题的建议。
+确认最终答案：您可以参考AI建议，选择坚持最初答案，或修改为其他答案，请提交您的最终选择。
+
+请注意：
+请根据您的判断认真完成每道题。
+题目没有时间限制。
+系统将记录您的答题过程。
+
+如果您已明白规则，请点击 “开始第一题”。`;
+
+  const html = `
+    <div class="notice">
+      <div style="font-weight:900;margin-bottom:6px;">测试题作答说明</div>
+      <div class="qText">${escapeHtml(body)}</div>
+      <div class="row" style="justify-content:flex-end;margin-top:10px;">
+        <button id="mainIntroStartBtn" class="primary">开始第一题</button>
+      </div>
+    </div>
+  `;
+  $("leftArea").innerHTML = html;
+  $("mainIntroStartBtn").onclick = ()=>toTasksMain();
+
+  setTopLine("请阅读：测试题作答说明");
   setBadges();
 }
 
