@@ -141,74 +141,41 @@ function safeLSSet(key, val){
 }
 
 // ===== 自动上传到 Google Sheet（Apps Script Web App）=====
+// ===== 自动上传到 Google Sheet（Apps Script Web App）=====
 async function uploadToSheet() {
-  // 防止重复提交（同一次实验流程里多次点击/刷新）
+  // 防止重复提交
   state.local.meta._uploadedAttempted = (state.local.meta._uploadedAttempted || 0) + 1;
-  if (state.local.meta._uploadedDone) return { ok:true, skipped:true };
+  if (state.local.meta._uploadedDone) return { ok: true, skipped: true };
 
-  // 1) 构造 payload：上传时不带 raw（raw 只用于本地导出，避免请求体膨胀）
+  // 1) 构造 payload
   let payload;
   try {
     payload = buildCloudPayload();
     if (payload && payload.raw) delete payload.raw;
   } catch (e) {
-    return { ok:false, error: "buildCloudPayload failed: " + String(e) };
+    return { ok: false, error: "buildCloudPayload failed: " + String(e) };
   }
 
   const bodyJson = JSON.stringify(payload);
-  // 记录体积，便于定位“某些组更大 → 发送失败”
   console.log("[upload] bytes =", bodyJson.length, "group=", state.group);
 
-  // Apps Script 最稳的是 x-www-form-urlencoded（避免 JSON 触发预检/CORS）
-  const form = new URLSearchParams();
-  form.set("payload", bodyJson);
-  form.set("uid", payload?.meta?.participant_id || state.uid || "");
-  form.set("group_code", String(payload?.meta?.group_code || state.group || ""));
-
-  // A) fetch no-cors：关闭 keepalive（keepalive/Beacon 对 body 大小更敏感，常导致“请求根本没发出去”）
+  // 2) 优先策略：使用 Hidden Iframe Form 提交 (最稳健，支持大数据量，无视 CORS)
+  // 我们移除了 fetch no-cors，因为它会掩盖服务端拒绝(413/400)的错误，导致后续兜底不执行。
   try {
-    await fetch(WEB_APP_URL + "?v=" + Date.now(), {
-      method: "POST",
-      mode: "no-cors",
-      body: form,
-      keepalive: false
-    });
-    state.local.meta._uploadedDone = true;
-    return { ok:true, method:"fetch-form-no-cors" };
-  } catch (e1) {
-    console.warn("[upload] fetch no-cors failed:", e1);
-  }
-
-  // B) sendBeacon：可能因大小限制返回 false
-  try {
-    const ok = navigator.sendBeacon(
-      WEB_APP_URL,
-      new Blob([form.toString()], { type: "application/x-www-form-urlencoded;charset=UTF-8" })
-    );
-    if (ok) {
-      state.local.meta._uploadedDone = true;
-      return { ok:true, method:"beacon-form" };
-    }
-    console.warn("[upload] sendBeacon returned false (likely payload too large or blocked)");
-  } catch (e2) {
-    console.warn("[upload] sendBeacon threw:", e2);
-  }
-
-  // C) 终极兜底：隐藏 iframe 的 form submit（不走 fetch/beacon 的策略限制）
-  try {
+    const iframeName = "upload_iframe_" + Date.now();
     const iframe = document.createElement("iframe");
-    iframe.name = "upload_iframe_" + Date.now();
+    iframe.name = iframeName;
     iframe.style.display = "none";
     document.body.appendChild(iframe);
 
     const f = document.createElement("form");
     f.action = WEB_APP_URL;
     f.method = "POST";
-    f.target = iframe.name;
+    f.target = iframeName;
     f.style.display = "none";
 
     const inp1 = document.createElement("input");
-    inp1.name = "payload";
+    inp1.name = "payload"; // 对应 GAS 的 e.parameter.payload
     inp1.value = bodyJson;
 
     const inp2 = document.createElement("input");
@@ -223,14 +190,44 @@ async function uploadToSheet() {
     f.appendChild(inp2);
     f.appendChild(inp3);
     document.body.appendChild(f);
+
+    // 提交表单
     f.submit();
 
+    // 标记为完成
     state.local.meta._uploadedDone = true;
-    return { ok:true, method:"form-iframe" };
-  } catch (e3) {
-    console.warn("[upload] form-iframe failed:", e3);
-    return { ok:false, error: "all upload methods failed: " + String(e3) };
+
+    // 稍微延迟后清理 DOM (可选)
+    setTimeout(() => {
+      try { document.body.removeChild(f); document.body.removeChild(iframe); } catch(e){}
+    }, 5000);
+
+    return { ok: true, method: "form-iframe-primary" };
+
+  } catch (e) {
+    console.warn("[upload] iframe failed, trying beacon:", e);
   }
+
+  // 3) 备选策略：sendBeacon (适合页面关闭时触发，但有体积限制)
+  try {
+    const form = new URLSearchParams();
+    form.set("payload", bodyJson);
+    form.set("uid", payload?.meta?.participant_id || state.uid || "");
+    form.set("group_code", String(payload?.meta?.group_code || state.group || ""));
+
+    const ok = navigator.sendBeacon(
+      WEB_APP_URL,
+      new Blob([form.toString()], { type: "application/x-www-form-urlencoded;charset=UTF-8" })
+    );
+    if (ok) {
+      state.local.meta._uploadedDone = true;
+      return { ok: true, method: "beacon-fallback" };
+    }
+  } catch (e2) {
+    console.warn("[upload] beacon failed:", e2);
+  }
+
+  return { ok: false, error: "all upload methods failed" };
 }
 
 function setUploadStatus(msg) {
