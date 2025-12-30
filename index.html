@@ -142,60 +142,94 @@ function safeLSSet(key, val){
 
 // ===== 自动上传到 Google Sheet（Apps Script Web App）=====
 async function uploadToSheet() {
-  // 防止重复提交
-  state.local.meta._uploadedAttempted = state.local.meta._uploadedAttempted || 0;
-  state.local.meta._uploadedAttempted += 1;
+  // 防止重复提交（同一次实验流程里多次点击/刷新）
+  state.local.meta._uploadedAttempted = (state.local.meta._uploadedAttempted || 0) + 1;
   if (state.local.meta._uploadedDone) return { ok:true, skipped:true };
 
-  // 补充一些 meta（便于你后端统一识别）
+  // 1) 构造 payload：上传时不带 raw（raw 只用于本地导出，避免请求体膨胀）
+  let payload;
   try {
-    state.local.meta.uid = state.uid || state.local.meta.uid;
-    state.local.meta.participant_id = state.local.meta.participant_id || state.local.meta.uid;
-    state.local.meta.group_code = state.local.meta.group_code || state.local.meta.group;
-    state.local.meta.group = state.group || state.local.meta.group;
-    state.local.meta.trust_formation = state.local.meta.trust_formation || normalizeTrustFormation(state.groupCfg.trust);
-    state.local.meta.bias_condition = state.local.meta.bias_condition || state.groupCfg.bias;
-    state.local.meta.strategy_condition = state.local.meta.strategy_condition || state.groupCfg.strategy;
-    state.local.meta._uploadedAtClient = new Date().toISOString();
-    state.local.meta._pageUrl = location.href;
-    state.local.meta._userAgent = navigator.userAgent;
-  } catch(e) {}
-
-  // 统一 payload 结构：按数据字典拆成三张表（participants / survey_responses / trials）
-  const payload = buildCloudPayload();
+    payload = buildCloudPayload();
+    if (payload && payload.raw) delete payload.raw;
+  } catch (e) {
+    return { ok:false, error: "buildCloudPayload failed: " + String(e) };
+  }
 
   const bodyJson = JSON.stringify(payload);
+  // 记录体积，便于定位“某些组更大 → 发送失败”
+  console.log("[upload] bytes =", bodyJson.length, "group=", state.group);
 
-  // 关键：用 application/x-www-form-urlencoded 避免触发 CORS 预检（OPTIONS）
+  // Apps Script 最稳的是 x-www-form-urlencoded（避免 JSON 触发预检/CORS）
   const form = new URLSearchParams();
   form.set("payload", bodyJson);
-  form.set("data", bodyJson);
-  form.set("json", bodyJson);
-  form.set("uid", state.local.meta.participant_id || state.uid || "");
-  form.set("group_code", String(state.local.meta.group_code || state.group || ""));
+  form.set("uid", payload?.meta?.participant_id || state.uid || "");
+  form.set("group_code", String(payload?.meta?.group_code || state.group || ""));
 
-  // 1) no-cors：最稳（浏览器读不到响应，但请求能发出去，后端就能写表）
+  // A) fetch no-cors：关闭 keepalive（keepalive/Beacon 对 body 大小更敏感，常导致“请求根本没发出去”）
   try {
     await fetch(WEB_APP_URL + "?v=" + Date.now(), {
       method: "POST",
       mode: "no-cors",
       body: form,
-      keepalive: true
+      keepalive: false
     });
     state.local.meta._uploadedDone = true;
     return { ok:true, method:"fetch-form-no-cors" };
-  } catch(eNoCors) {}
+  } catch (e1) {
+    console.warn("[upload] fetch no-cors failed:", e1);
+  }
 
-  // 2) sendBeacon 兜底（页面卸载/关闭时更稳）
+  // B) sendBeacon：可能因大小限制返回 false
   try {
     const ok = navigator.sendBeacon(
       WEB_APP_URL,
       new Blob([form.toString()], { type: "application/x-www-form-urlencoded;charset=UTF-8" })
     );
-    if (ok) state.local.meta._uploadedDone = true;
-    return { ok, method:"beacon-form" };
-  } catch(eBeacon) {
-    return { ok:false, error: String(eBeacon) };
+    if (ok) {
+      state.local.meta._uploadedDone = true;
+      return { ok:true, method:"beacon-form" };
+    }
+    console.warn("[upload] sendBeacon returned false (likely payload too large or blocked)");
+  } catch (e2) {
+    console.warn("[upload] sendBeacon threw:", e2);
+  }
+
+  // C) 终极兜底：隐藏 iframe 的 form submit（不走 fetch/beacon 的策略限制）
+  try {
+    const iframe = document.createElement("iframe");
+    iframe.name = "upload_iframe_" + Date.now();
+    iframe.style.display = "none";
+    document.body.appendChild(iframe);
+
+    const f = document.createElement("form");
+    f.action = WEB_APP_URL;
+    f.method = "POST";
+    f.target = iframe.name;
+    f.style.display = "none";
+
+    const inp1 = document.createElement("input");
+    inp1.name = "payload";
+    inp1.value = bodyJson;
+
+    const inp2 = document.createElement("input");
+    inp2.name = "uid";
+    inp2.value = payload?.meta?.participant_id || state.uid || "";
+
+    const inp3 = document.createElement("input");
+    inp3.name = "group_code";
+    inp3.value = String(payload?.meta?.group_code || state.group || "");
+
+    f.appendChild(inp1);
+    f.appendChild(inp2);
+    f.appendChild(inp3);
+    document.body.appendChild(f);
+    f.submit();
+
+    state.local.meta._uploadedDone = true;
+    return { ok:true, method:"form-iframe" };
+  } catch (e3) {
+    console.warn("[upload] form-iframe failed:", e3);
+    return { ok:false, error: "all upload methods failed: " + String(e3) };
   }
 }
 
